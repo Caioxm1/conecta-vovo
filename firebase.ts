@@ -20,4 +20,5 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
 
-export { auth, db, storage, googleProvider };
+// AQUI ESTÁ A CORREÇÃO: 'app' foi adicionado à lista de exportação
+export { app, auth, db, storage, googleProvider };
