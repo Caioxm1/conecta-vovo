@@ -138,7 +138,7 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen font-sans">
+    <div className="flex h-dvh font-sans">
         {/* O 'activeCall' está desabilitado por enquanto */}
         {/* {activeCall && <CallUI call={activeCall} onAcceptCall={handleAcceptCall} onEndCall={handleEndCall} currentUser={currentUser}/>} */}
         

@@ -32,7 +32,7 @@ const LoginScreen: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-green-50 p-4">
+    <div className="flex flex-col items-center justify-center min-h-dvh bg-green-50 p-4">
       <div className="text-center mb-12">
         <h1 className="text-5xl font-bold text-green-800">Conecta Vovó</h1>
         <p className="text-xl text-green-600 mt-2">Feito com amor para a Vovó se conectar com a família.</p>

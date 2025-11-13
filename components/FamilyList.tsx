@@ -49,7 +49,7 @@ const FamilyList: React.FC<FamilyListProps> = ({ currentUser, onSelectUser, onLo
         currentUser={currentUser}
         allUsers={[...family, currentUser]} // Passando todos os usuários
       />
-      <div className="flex flex-col h-screen bg-white shadow-lg w-full max-w-sm p-6">
+      <div className="flex flex-col h-dvh bg-white shadow-lg w-full max-w-sm p-6">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center">
               <img src={currentUser.avatar} alt={currentUser.name} className="w-16 h-16 rounded-full mr-4 border-2 border-green-500" />

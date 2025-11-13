@@ -106,7 +106,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
   useEffect(scrollToBottom, [messages]); // Rola para baixo quando as mensagens mudam
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 w-full">
+    <div className="flex flex-col h-dvh bg-gray-50 w-full">
       <header className="flex items-center p-4 bg-white shadow-md z-10">
         <button onClick={onGoBack} className="p-2 rounded-full hover:bg-gray-200 mr-4">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
