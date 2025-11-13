@@ -142,7 +142,7 @@ function App() {
     {activeCall && <CallUI call={activeCall} onAcceptCall={handleAcceptCall} onEndCall={handleEndCall} currentUser={currentUser}/>}
 
     {/* Este é o contêiner da FamilyList */}
-    <div className={`w-full shrink-0 transition-transform duration-300 ease-in-out ${chatWithUser ? '-translate-x-full md:translate-x-0' : 'translate-x-0'} md:w-auto`}>
+    <div className={`w-screen shrink-0 transition-transform duration-300 ease-in-out ${chatWithUser ? '-translate-x-full md:translate-x-0' : 'translate-x-0'} md:w-auto`}>
         <FamilyList
             currentUser={currentUser}
             onSelectUser={handleSelectUser}
@@ -151,7 +151,7 @@ function App() {
     </div>
 
     {/* Este é o contêiner da ChatWindow */}
-    <div className={`absolute top-0 left-0 w-full h-full md:relative md:flex-1 transition-transform duration-300 ease-in-out ${chatWithUser ? 'translate-x-0' : 'translate-x-full'}`}>
+    <div className={`absolute top-0 left-0 w-screen h-full md:relative md:flex-1 transition-transform duration-300 ease-in-out ${chatWithUser ? 'translate-x-0' : 'translate-x-full'}`}>
         {chatWithUser ? (
         <ChatWindow
                 currentUser={currentUser}
