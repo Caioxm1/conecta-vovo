@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageType } from '../types';
-import { storage } from './firebase'; // Importamos o Storage
+import { storage } from '../firebase'; // Importamos o Storage
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { v4 as uuid } from 'uuid'; // Para nomes de arquivo únicos
 

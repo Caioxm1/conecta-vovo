@@ -1,5 +1,5 @@
 import React from 'react';
-import { auth, googleProvider, db } from './firebase'; // Importamos o Firebase
+import { auth, googleProvider, db } from '../firebase'; // Importamos o Firebase
 import { signInWithPopup } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 

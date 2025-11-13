@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { useCollection } from 'react-firebase-hooks/firestore';
 import { collection, query, orderBy, Timestamp } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from '../firebase';
 
 import type { User, Message } from '../types';
 import { MessageType } from '../types';
