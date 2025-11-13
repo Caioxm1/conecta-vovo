@@ -10,9 +10,6 @@ import CallUI from './components/CallUI';
 import type { User, Message, ActiveCall } from './types';
 import { MessageType, CallState, CallType } from './types';
 
-// Não precisamos mais de 'familyMembers' ou 'initialMessages'
-// Eles virão do banco de dados
-
 // A função 'showNotification' pode continuar a mesma
 const showNotification = (title: string, options: NotificationOptions) => {
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -34,8 +31,6 @@ function App() {
   useEffect(() => {
     if (userAuth) {
       // Converte o usuário do Auth para o nosso tipo 'User'
-      // O 'relationship' e 'status' precisarão de uma lógica mais complexa
-      // no futuro (ex: buscar de um perfil no Firestore)
       const user: User = {
         id: userAuth.uid,
         name: userAuth.displayName || "Usuário",
@@ -58,9 +53,6 @@ function App() {
       setCurrentUser(null);
     }
   }, [userAuth]);
-
-  // Os 'useEffect' de notificação de mensagem e chamada podem ser
-  // implementados depois com 'listeners' do Firestore. Por enquanto, vamos focar no envio.
 
   const handleLogout = () => {
     // Atualiza o status para offline antes de deslogar
@@ -107,7 +99,6 @@ function App() {
   const handleStartCall = (type: 'audio' | 'video') => {
     if (!chatWithUser) return;
     alert("Função de chamada ainda não implementada.");
-    // O código antigo de 'setActiveCall' está comentado
     /*
     setActiveCall({
         state: CallState.OUTGOING,
@@ -154,8 +145,7 @@ function App() {
                 <ChatWindow
                     currentUser={currentUser}
                     chatWithUser={chatWithUser}
-                    messages={getFilteredMessages()} // Se você removeu, pode tirar
-                    isTyping={typingUser?.id === chatWithUser.id} // Se você removeu, pode tirar
+                    // As props 'messages' e 'isTyping' foram removidas
                     onSendMessage={handleSendMessage}
                     onStartCall={handleStartCall}
                     onGoBack={() => setChatWithUser(null)}
@@ -180,8 +170,7 @@ function App() {
                     <ChatWindow
                         currentUser={currentUser}
                         chatWithUser={chatWithUser}
-                        messages={getFilteredMessages()} // Se você removeu, pode tirar
-                        isTyping={typingUser?.id === chatWithUser.id} // Se você removeu, pode tirar
+                        // As props 'messages' e 'isTyping' foram removidas
                         onSendMessage={handleSendMessage}
                         onStartCall={handleStartCall}
                         onGoBack={() => setChatWithUser(null)}
@@ -199,9 +188,8 @@ function App() {
   );
 }
 
-// A placeholder variable, as duration calculation will be part of the MessageInput component state.
-const recordingDuration = 0; 
-
+// A linha 'recordingDuration' foi removida pois era desnecessária
+ 
 export default App;
 
-export default App;
+// A segunda linha 'export default App;' foi removida
