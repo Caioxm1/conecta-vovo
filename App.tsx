@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuthState } from 'react-firebase-hooks/auth'; // Hook para ouvir a autenticação
 import { auth, db } from './firebase'; // Importamos
 import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
-import { requestPermissionAndSaveToken } from './fcm'; // <-- ADICIONADO PARA NOTIFICAÇÕES PUSH
+import { requestPermissionAndSaveToken } from './src/fcm'; // <-- ADICIONADO PARA NOTIFICAÇÕES PUSH
 
 import LoginScreen from './components/LoginScreen';
 import FamilyList from './components/FamilyList';
