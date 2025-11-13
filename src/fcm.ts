@@ -1,8 +1,9 @@
 import { getMessaging, getToken, isSupported } from "firebase/messaging";
-import { app, db } from "./firebase"; // Importa do seu app principal
-import { doc, setDoc, serverTimestamp } in "firebase/firestore";
+import { app, db } from "./firebase";
+// AQUI ESTÁ A CORREÇÃO: 'in' foi trocado por 'from'
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
-// Esta é a chave que você copiou do Console do Firebase (Etapa 1)
+// Esta é a chave que você copiou do Console do Firebase
 const VAPID_KEY = "BEtp3Dn1ucaJRxlpIt51w-xjRhanEsbogXoS0janttQ28bAYs1ipkCR1BSOHe3SRB4AL934KNYXbmHKqPWYK9f0";
 
 // Função para pedir permissão e salvar o token
@@ -31,7 +32,6 @@ export const requestPermissionAndSaveToken = async (userId: string) => {
         console.log("Token FCM obtido:", currentToken);
         
         // 3. Salva o token no perfil do usuário no Firestore
-        // Isso é crucial para a Parte 2 (backend)
         const userRef = doc(db, "users", userId);
         await setDoc(userRef, {
           fcmToken: currentToken, // Salva o token
