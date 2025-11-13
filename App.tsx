@@ -138,39 +138,70 @@ function App() {
   }
 
   return (
-    <div className="flex h-dvh font-sans overflow-x-hidden">
-    {activeCall && <CallUI call={activeCall} onAcceptCall={handleAcceptCall} onEndCall={handleEndCall} currentUser={currentUser}/>}
+    <div className="h-dvh w-screen font-sans overflow-hidden">
+        {activeCall && <CallUI call={activeCall} onAcceptCall={handleAcceptCall} onEndCall={handleEndCall} currentUser={currentUser}/>}
 
-    {/* Este é o contêiner da FamilyList */}
-    <div className={`w-screen shrink-0 transition-transform duration-300 ease-in-out ${chatWithUser ? '-translate-x-full md:translate-x-0' : 'translate-x-0'} md:w-auto`}>
-        <FamilyList
-            currentUser={currentUser}
-            onSelectUser={handleSelectUser}
-            onLogout={handleLogout}
-        />
-    </div>
-
-    {/* Este é o contêiner da ChatWindow */}
-    <div className={`absolute top-0 left-0 w-screen h-full md:relative md:flex-1 transition-transform duration-300 ease-in-out ${chatWithUser ? 'translate-x-0' : 'translate-x-full'}`}>
-        {chatWithUser ? (
-        <ChatWindow
-                currentUser={currentUser}
-                chatWithUser={chatWithUser}
-                // 'messages' e 'isTyping' foram removidos
-                // O ChatWindow vai buscar suas próprias mensagens
-                onSendMessage={handleSendMessage}
-                onStartCall={handleStartCall}
-                onGoBack={() => setChatWithUser(null)}
-            />
+        {/* --- LAYOUT PARA CELULAR --- */}
+        {/* Mostra SÓ a lista OU SÓ o chat. O 'md:hidden' esconde isso no desktop. */}
+        <div className="h-full w-full md:hidden">
+            {!chatWithUser ? (
+                <FamilyList
+                    currentUser={currentUser}
+                    onSelectUser={handleSelectUser}
+                    onLogout={handleLogout}
+                />
             ) : (
-                <div className="hidden md:flex flex-col items-center justify-center h-full bg-gray-50 text-gray-500">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-32 w-32 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                    <p className="text-2xl">Selecione uma pessoa para conversar</p>
-                </div>
+                <ChatWindow
+                    currentUser={currentUser}
+                    chatWithUser={chatWithUser}
+                    messages={getFilteredMessages()} // Se você removeu, pode tirar
+                    isTyping={typingUser?.id === chatWithUser.id} // Se você removeu, pode tirar
+                    onSendMessage={handleSendMessage}
+                    onStartCall={handleStartCall}
+                    onGoBack={() => setChatWithUser(null)}
+                />
             )}
         </div>
+
+        {/* --- LAYOUT PARA DESKTOP --- */}
+        {/* Mostra os dois lado a lado. O 'hidden' esconde isso no celular. */}
+        <div className="hidden md:flex h-full w-full">
+            {/* Lado Esquerdo: Lista */}
+            <div className="w-auto">
+                <FamilyList
+                    currentUser={currentUser}
+                    onSelectUser={handleSelectUser}
+                    onLogout={handleLogout}
+                />
+            </div>
+            {/* Lado Direito: Chat ou Placeholder */}
+            <div className="flex-1 h-full">
+                {chatWithUser ? (
+                    <ChatWindow
+                        currentUser={currentUser}
+                        chatWithUser={chatWithUser}
+                        messages={getFilteredMessages()} // Se você removeu, pode tirar
+                        isTyping={typingUser?.id === chatWithUser.id} // Se você removeu, pode tirar
+                        onSendMessage={handleSendMessage}
+                        onStartCall={handleStartCall}
+                        onGoBack={() => setChatWithUser(null)}
+                    />
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-full bg-gray-50 text-gray-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-32 w-32 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                        <p className="text-2xl">Selecione uma pessoa para conversar</p>
+                    </div>
+                )}
+            </div>
+        </div>
+
     </div>
   );
 }
+
+// A placeholder variable, as duration calculation will be part of the MessageInput component state.
+const recordingDuration = 0; 
+
+export default App;
 
 export default App;
