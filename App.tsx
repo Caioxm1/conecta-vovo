@@ -138,22 +138,22 @@ function App() {
   }
 
   return (
-    <div className="flex h-dvh font-sans">
-        {/* O 'activeCall' está desabilitado por enquanto */}
-        {/* {activeCall && <CallUI call={activeCall} onAcceptCall={handleAcceptCall} onEndCall={handleEndCall} currentUser={currentUser}/>} */}
-        
-        <div className={`transition-transform duration-300 ease-in-out ${chatWithUser ? '-translate-x-full md:translate-x-0' : 'translate-x-0'} md:block`}>
-            <FamilyList
-                currentUser={currentUser}
-                // 'family' e 'allUsers' serão buscados DENTRO do FamilyList
-                // 'messages' foi removido
-                onSelectUser={handleSelectUser}
-                onLogout={handleLogout}
-            />
-        </div>
-        <div className={`absolute top-0 left-0 w-full h-full md:relative transition-transform duration-300 ease-in-out ${chatWithUser ? 'translate-x-0' : 'translate-x-full'}`}>
-            {chatWithUser ? (
-            <ChatWindow
+    <div className="flex h-dvh font-sans overflow-x-hidden">
+    {activeCall && <CallUI call={activeCall} onAcceptCall={handleAcceptCall} onEndCall={handleEndCall} currentUser={currentUser}/>}
+
+    {/* Este é o contêiner da FamilyList */}
+    <div className={`w-full shrink-0 transition-transform duration-300 ease-in-out ${chatWithUser ? '-translate-x-full md:translate-x-0' : 'translate-x-0'} md:w-auto`}>
+        <FamilyList
+            currentUser={currentUser}
+            onSelectUser={handleSelectUser}
+            onLogout={handleLogout}
+        />
+    </div>
+
+    {/* Este é o contêiner da ChatWindow */}
+    <div className={`absolute top-0 left-0 w-full h-full md:relative md:flex-1 transition-transform duration-300 ease-in-out ${chatWithUser ? 'translate-x-0' : 'translate-x-full'}`}>
+        {chatWithUser ? (
+        <ChatWindow
                 currentUser={currentUser}
                 chatWithUser={chatWithUser}
                 // 'messages' e 'isTyping' foram removidos
