@@ -1,0 +1,8 @@
+{
+  "name": "Conecta Vovó",
+  "description": "Um aplicativo de comunicação simples para conectar a avó com sua família através de texto, voz, e chamadas de vídeo e áudio.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
