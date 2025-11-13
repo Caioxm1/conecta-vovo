@@ -1,6 +1,6 @@
 import { getMessaging, getToken, isSupported } from "firebase/messaging";
-import { app, db } from "./firebase";
-// AQUI ESTÁ A CORREÇÃO: 'in' foi trocado por 'from'
+// AQUI ESTÁ A CORREÇÃO: O caminho mudou de './firebase' para '../firebase'
+import { app, db } from "../firebase"; 
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 // Esta é a chave que você copiou do Console do Firebase
