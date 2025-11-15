@@ -70,7 +70,6 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   const [callDuration, setCallDuration] = useState(0);
   const [isJoined, setIsJoined] = useState(false);
 
-  // --- A CORREÇÃO ESTÁ AQUI ---
   // Só cria os tracks (pede permissão) QUANDO o estado for ATIVO
   const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack(state === CallState.ACTIVE);
   const { localCameraTrack, camReady } = useLocalCameraTrack(state === CallState.ACTIVE);
@@ -101,18 +100,20 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
 
   // useEffect SEPARADO #2: Publicar (enviar) Microfone
   useEffect(() => {
-    // Só publica se JÁ ENTROU e o mic está PRONTO
     if (isJoined && micReady && localMicrophoneTrack) {
       console.log("useEffect [Mic]: Publicando microfone...");
+      // --- A CORREÇÃO ESTÁ AQUI ---
+      localMicrophoneTrack.setEnabled(true); // Liga o microfone
       agoraClient.publish([localMicrophoneTrack]);
     }
   }, [isJoined, micReady, localMicrophoneTrack, agoraClient]);
 
   // useEffect SEPARADO #3: Publicar (enviar) Câmera
   useEffect(() => {
-    // Só publica se JÁ ENTROU e a cam está PRONTA
     if (isJoined && camReady && localCameraTrack && type === CallType.VIDEO) {
       console.log("useEffect [Cam]: Publicando câmera...");
+      // --- A CORREÇÃO ESTÁ AQUI ---
+      localCameraTrack.setEnabled(true); // Liga a câmera
       agoraClient.publish([localCameraTrack]);
     }
   }, [isJoined, camReady, localCameraTrack, type, agoraClient]);
