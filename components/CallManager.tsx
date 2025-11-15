@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import type { User, ActiveCall } from '../types';
 import { CallState, CallType } from '../types';
 
-// Importa o AgoraRTC, mas NÃO cria o cliente aqui
 import AgoraRTC from 'agora-rtc-sdk-ng'; 
 import {
   AgoraRTCProvider,
@@ -23,8 +22,6 @@ interface CallManagerProps {
   currentUser: User;
   agoraAppId: string;
 }
-
-// *** A LINHA DUPLICADA 'const agoraClient = ...' FOI REMOVIDA DAQUI ***
 
 // Sub-componente que gerencia a lógica da chamada ATIVA (Sem mudanças)
 const VideoCall: React.FC<{ 
@@ -65,74 +62,88 @@ const VideoCall: React.FC<{
   );
 };
 
-// Componente Principal (COM AS CORREÇÕES)
+// Componente Principal (COM A LÓGICA CORRIGIDA)
 const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall, currentUser, agoraAppId }) => {
   const { state, type, withUser, channelName } = call;
   const [callDuration, setCallDuration] = useState(0);
   const [isJoined, setIsJoined] = useState(false);
 
-  // --- CORREÇÃO #1: Adicionado { publish: false } ---
-  // Isso impede a publicação automática antes de entrar no canal.
+  // 1. Criar trilhas sem publicar (isto está correto)
   const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack(true, { publish: false });
   const { localCameraTrack, camReady } = useLocalCameraTrack(type === CallType.VIDEO, { publish: false });
   
-  // Este hook agora pegará o cliente correto do <AgoraRTCProvider>
   const agoraClient = useRTCClient();
 
-  // useEffect SEPARADO #1: Entrar e Sair do Canal
+  // 2. Lógica de Join e Publish combinada
   useEffect(() => {
     let didJoin = false;
-    if (state === CallState.ACTIVE) {
-      console.log("useEffect [Join]: Estado é ATIVO. Tentando entrar no canal...");
-      agoraClient.join(agoraAppId, channelName, null, currentUser.id)
-        .then(() => {
+    
+    const joinChannel = async () => {
+      if (state === CallState.ACTIVE) {
+        try {
+          console.log("useEffect [Join]: Estado é ATIVO. Tentando entrar no canal...");
+          await agoraClient.join(agoraAppId, channelName, null, currentUser.id);
           console.log("useEffect [Join]: SUCESSO. Usuário entrou no canal!");
           didJoin = true;
           setIsJoined(true);
-        });
-    }
 
-    return () => {
-      console.log("useEffect [Join]: Limpeza. Saindo do canal.");
-      setIsJoined(false);
-      if (didJoin) { 
-        agoraClient.leave();
+          // *** LÓGICA DE PUBLICAÇÃO MOVIDA PARA CÁ ***
+          // Espera as trilhas estarem prontas (o que já deve ter acontecido)
+          if (micReady && localMicrophoneTrack) {
+            console.log("useEffect [Join]: Publicando microfone...");
+            await agoraClient.publish([localMicrophoneTrack]);
+          }
+          if (camReady && localCameraTrack && type === CallType.VIDEO) {
+            console.log("useEffect [Join]: Publicando câmera...");
+            await agoraClient.publish([localCameraTrack]);
+          }
+
+        } catch (error) {
+          console.error("Erro ao entrar ou publicar:", error);
+        }
       }
     };
-  }, [state, agoraClient, agoraAppId, channelName, currentUser.id]);
 
-  // useEffect SEPARADO #2: Publicar (enviar) Microfone
-  useEffect(() => {
-    // Só publica se JÁ ENTROU e o mic está PRONTO
-    if (isJoined && micReady && localMicrophoneTrack) {
-      console.log("useEffect [Mic]: Publicando microfone...");
-      localMicrophoneTrack.setEnabled(true);
-      // Publica a trilha manualmente
-      agoraClient.publish([localMicrophoneTrack]);
-    }
-  }, [isJoined, micReady, localMicrophoneTrack, agoraClient]);
+    joinChannel(); // Executa a função
 
-  // useEffect SEPARADO #3: Publicar (enviar) Câmera
-  useEffect(() => {
-    // Só publica se JÁ ENTROU e a cam está PRONTA
-    if (isJoined && camReady && localCameraTrack && type === CallType.VIDEO) {
-      console.log("useEffect [Cam]: Publicando câmera...");
-      localCameraTrack.setEnabled(true);
-      // Publica a trilha manualmente
-      agoraClient.publish([localCameraTrack]);
-    }
-  }, [isJoined, camReady, localCameraTrack, type, agoraClient]);
+    // Função de Limpeza
+    return () => {
+      console.log("useEffect [Join]: Limpeza.");
+      setIsJoined(false);
+      if (didJoin) { 
+        // Também faz o "unpublish" ao sair
+        try {
+          if (localMicrophoneTrack) {
+            agoraClient.unpublish(localMicrophoneTrack);
+          }
+          if (localCameraTrack) {
+            agoraClient.unpublish(localCameraTrack);
+          }
+        } catch (error) {
+           console.error("Erro ao fazer unpublish:", error);
+        }
+        
+        agoraClient.leave();
+        console.log("useEffect [Join]: Saiu do canal.");
+      }
+    };
+    
+    // As dependências agora incluem as trilhas e seus estados "prontos"
+  }, [state, agoraClient, agoraAppId, channelName, currentUser.id, localMicrophoneTrack, localCameraTrack, micReady, camReady, type]);
+  
 
-  // useEffect SEPARADO #4: Timer da Chamada (Sem mudanças)
+  // REMOVEMOS OS useEffects #2 e #3 (de publicação manual) DAQUI
+
+  // useEffect SEPARADO #4: Timer da Chamada (agora depende de isJoined)
   useEffect(() => {
     let timer: number | undefined;
-    if (state === CallState.ACTIVE) {
+    if (isJoined) { // O timer só começa quando o join está 100% completo
       timer = window.setInterval(() => {
         setCallDuration(prev => prev + 1);
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [state]);
+  }, [isJoined]); // A dependência agora é 'isJoined'
 
   
   // O resto do componente (formatDuration, getCallStatusText, e o JSX) continua 100% igual
@@ -149,7 +160,8 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
       case CallState.INCOMING:
         return `${withUser.name} está te ligando...`;
       case CallState.ACTIVE:
-        return formatDuration(callDuration);
+        // Mostra "Conectando..." até que o join seja bem-sucedido
+        return isJoined ? formatDuration(callDuration) : "Conectando...";
       default:
         return '';
     }
@@ -158,7 +170,11 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   return (
     <div className="absolute inset-0 bg-gray-800 bg-opacity-90 flex flex-col items-center justify-center z-50 text-white">
       
-      {state === CallState.ACTIVE && (
+      {/* MUDANÇA FINAL: 
+        Só renderize o VideoCall DEPOIS que o join estiver completo (isJoined)
+        Isso evita que o <LocalVideoTrack> tente publicar antes da hora.
+      */}
+      {isJoined && (
         <VideoCall 
           channelName={channelName} 
           callType={type}
@@ -173,7 +189,8 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
             <p className="text-2xl mt-4 opacity-80">{getCallStatusText()}</p>
         </div>
 
-        {type === CallType.AUDIO && state !== CallState.ACTIVE && (
+        {/* Mostra o avatar apenas se for áudio OU se ainda não estiver conectado */}
+        {(type === CallType.AUDIO || !isJoined) && (
             <div className="flex flex-col items-center">
                 <img src={withUser.avatar} alt={withUser.name} className="w-48 h-48 rounded-full border-8 border-white shadow-2xl mb-4" />
             </div>
@@ -204,9 +221,9 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
 };
 
 
-// Componente "Pai" que fornece o Cliente Agora
-// Esta é a única parte que cria o cliente.
+// Componente "Pai" que fornece o Cliente Agora (Sem mudanças)
 const AgoraWrapper: React.FC<CallManagerProps> = (props) => {
+  // Esta é a única linha que deve criar o cliente
   const [agoraClient] = useState(() => AgoraRTC.createClient({ codec: "vp8", mode: "rtc" }));
 
   return (
