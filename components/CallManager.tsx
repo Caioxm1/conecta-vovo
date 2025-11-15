@@ -64,65 +64,69 @@ const VideoCall: React.FC<{
   );
 };
 
-// Componente Principal
+// Componente Principal (COM A LÓGICA CORRIGIDA)
 const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall, currentUser, agoraAppId }) => {
   const { state, type, withUser, channelName } = call;
   const [callDuration, setCallDuration] = useState(0);
 
-  // --- MUDANÇA AQUI ---
-  // Pegamos o 'micReady' e 'camReady' para saber quando os dispositivos estão prontos
+  // Pega os tracks e se eles estão PRONTOS (micReady, camReady)
   const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack();
   const { localCameraTrack, camReady } = useLocalCameraTrack();
   
   const agoraClient = useRTCClient();
 
   // --- useEffect SEPARADO #1: Entrar e Sair do Canal ---
+  // Roda apenas quando o 'state' muda
   useEffect(() => {
     if (state === CallState.ACTIVE) {
-      // Entra no canal do Agora
+      // Entra no canal
       agoraClient.join(agoraAppId, channelName, null, currentUser.id);
     }
 
-    // Função de limpeza (quando a chamada termina ou o estado muda)
+    // Função de limpeza (roda quando o componente sai da tela ou o 'state' muda)
     return () => {
       if (state === CallState.ACTIVE) {
         agoraClient.leave();
       }
     };
-    // Depende APENAS do estado da chamada e das informações do canal
   }, [state, agoraClient, agoraAppId, channelName, currentUser.id]);
 
-  // --- useEffect SEPARADO #2: Publicar (enviar) Mídia ---
+  // --- useEffect SEPARADO #2: Publicar (enviar) Microfone ---
+  // Roda apenas quando o microfone está pronto (micReady)
   useEffect(() => {
-    // Só publica se a chamada estiver ATIVA
-    if (state === CallState.ACTIVE && agoraClient) {
-      
-      // Publica o microfone ASSIM QUE ele estiver pronto
-      if (micReady && localMicrophoneTrack) {
-        localMicrophoneTrack.setEnabled(true);
-        agoraClient.publish([localMicrophoneTrack]);
-      }
-      
-      // Publica a câmera ASSIM QUE ela estiver pronta (se for vídeo)
-      if (camReady && localCameraTrack && type === CallType.VIDEO) {
-        localCameraTrack.setEnabled(true);
-        agoraClient.publish([localCameraTrack]);
-      }
+    if (state === CallState.ACTIVE && agoraClient && micReady && localMicrophoneTrack) {
+      // Microfone pronto E chamada ativa? Publica.
+      localMicrophoneTrack.setEnabled(true);
+      agoraClient.publish([localMicrophoneTrack]);
     }
 
-    // Função de limpeza para os tracks
+    // Limpeza: Roda quando a chamada NÃO ESTIVER MAIS ATIVA
     return () => {
       if (localMicrophoneTrack) {
         localMicrophoneTrack.setEnabled(false);
       }
+    };
+  }, [state, agoraClient, micReady, localMicrophoneTrack]); // Depende só do microfone
+
+  // --- useEffect SEPARADO #3: Publicar (enviar) Câmera ---
+  // Roda apenas quando a câmera está pronta (camReady)
+  useEffect(() => {
+    if (state === CallState.ACTIVE && agoraClient && camReady && localCameraTrack && type === CallType.VIDEO) {
+      // Câmera pronta E chamada ativa E é vídeo? Publica.
+      localCameraTrack.setEnabled(true);
+      agoraClient.publish([localCameraTrack]);
+    }
+    
+    // Limpeza: Roda quando a chamada NÃO ESTIVER MAIS ATIVA
+    return () => {
       if (localCameraTrack) {
         localCameraTrack.setEnabled(false);
       }
     };
-    // Depende do estado E da prontidão dos tracks (micReady, camReady)
-  }, [state, agoraClient, micReady, localMicrophoneTrack, camReady, localCameraTrack, type]);
+  }, [state, agoraClient, camReady, localCameraTrack, type]); // Depende só da câmera
 
-  // --- useEffect SEPARADO #3: Timer da Chamada ---
+  // --- useEffect SEPARADO #4: Timer da Chamada ---
+  // Roda apenas quando o 'state' muda
   useEffect(() => {
     let timer: number | undefined;
     if (state === CallState.ACTIVE) {
@@ -131,7 +135,7 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [state]); // Depende APENAS do estado
+  }, [state]);
 
   
   // O resto do componente (formatDuration, getCallStatusText, e o JSX) continua 100% igual
@@ -201,7 +205,6 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
     </div>
   );
 };
-
 
 // Componente "Pai" que fornece o Cliente Agora (Sem mudanças)
 const AgoraWrapper: React.FC<CallManagerProps> = (props) => {
