@@ -1,210 +1,192 @@
 import React, { useState, useEffect } from 'react';
-import { useAuthState } from 'react-firebase-hooks/auth'; // Hook para ouvir a autenticação
-import { auth, db } from './firebase'; // Importamos
-// Adicionado 'getDoc' para a função de deep link
-import { doc, setDoc, serverTimestamp, collection, addDoc, getDoc } from 'firebase/firestore'; 
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { auth, db } from './firebase';
+import { 
+  doc, setDoc, serverTimestamp, collection, addDoc, getDoc,
+  onSnapshot, // <-- ADICIONADO
+  updateDoc, // <-- ADICIONADO
+  deleteDoc, // <-- ADICIONADO
+  where,     // <-- ADICIONADO
+  query      // <-- ADICIONADO
+} from 'firebase/firestore'; 
 import { requestPermissionAndSaveToken } from './src/fcm';
 
 import LoginScreen from './components/LoginScreen';
 import FamilyList from './components/FamilyList';
 import ChatWindow from './components/ChatWindow';
-import CallUI from './components/CallUI';
+import CallManager from './components/CallManager'; // <-- MUDOU DE CallUI
 import type { User, Message, ActiveCall } from './types';
 import { MessageType, CallState, CallType } from './types';
 
+// Pega o App ID do Agora do arquivo .env
+const AGORA_APP_ID = process.env.AGORA_APP_ID || "";
+
 // A função 'showNotification' pode continuar a mesma
-const showNotification = (title: string, options: NotificationOptions) => {
-    if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(title, options);
-    }
-}
+// ... (showNotification)
 
 function App() {
-  // O hook 'useAuthState' cuida de 'currentUser' e 'loading' automaticamente
   const [userAuth, loadingAuth] = useAuthState(auth); 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
   const [chatWithUser, setChatWithUser] = useState<User | null>(null);
+  // O 'activeCall' agora guarda mais informações
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
 
-  // Este 'useEffect' converte o 'userAuth' do Firebase para o nosso tipo 'User'
+  // useEffect que cuida do login e perfil (continua igual)
   useEffect(() => {
-    if (userAuth) {
-      // Converte o usuário do Auth para o nosso tipo 'User'
-      const user: User = {
-        id: userAuth.uid,
-        name: userAuth.displayName || "Usuário",
-        avatar: userAuth.photoURL || `https://picsum.photos/seed/${userAuth.uid}/200`,
-        relationship: 'Família', // Placeholder
-        status: 'online', // Placeholder
-      };
-      setCurrentUser(user);
-      
-      // Atualiza o 'lastSeen' no Firestore
-      const userRef = doc(db, 'users', userAuth.uid);
-      setDoc(userRef, { lastSeen: serverTimestamp(), status: 'online' }, { merge: true });
-
-      // Pede permissão e salva o token FCM para notificações PUSH
-      requestPermissionAndSaveToken(userAuth.uid);
-
-    } else {
-      setCurrentUser(null);
-    }
+    // ... (código de login, setDoc, requestPermissionAndSaveToken)
   }, [userAuth]);
 
-  // useEffect' para ler a URL (Deep Link)
+  // useEffect' para ler a URL (Deep Link) (continua igual)
   useEffect(() => {
-    // Roda apenas se o usuário estiver logado e o chat AINDA não estiver definido
-    if (currentUser && !chatWithUser) {
-      const urlParams = new URLSearchParams(window.location.search);
-      const chatUserId = urlParams.get('chatWith');
+    // ... (código de 'chatWith' na URL)
+  }, [currentUser, chatWithUser]); 
 
-      if (chatUserId) {
-        console.log("Encontrado 'chatWith' na URL, tentando abrir chat com:", chatUserId);
+  // --- NOVO useEffect: OUVINTE DE CHAMADAS ---
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Ouve a coleção 'calls'
+    const callsRef = collection(db, "calls");
+    
+    // Query: Onde eu sou o destinatário (receiverId) E o status é 'ringing'
+    const q = query(callsRef, 
+      where("receiverId", "==", currentUser.id),
+      where("status", "==", "ringing")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      // Se alguma chamada aparecer
+      if (!snapshot.empty) {
+        const callDoc = snapshot.docs[0]; // Pega a primeira chamada
+        const callData = callDoc.data();
         
-        // Precisamos buscar os dados desse usuário
-        const userRef = doc(db, "users", chatUserId);
-        getDoc(userRef).then((userSnap) => {
-          if (userSnap.exists()) {
-            const userData = userSnap.data();
-            const userToChat: User = {
-              id: userData.id,
-              name: userData.name,
-              avatar: userData.avatar,
-              relationship: userData.relationship || 'Família',
-              status: userData.status || 'offline',
-            };
-            // Abre a janela de chat com esse usuário
-            setChatWithUser(userToChat);
-
-            // Limpa a URL para não abrir de novo no F5
-            window.history.replaceState(null, '', window.location.pathname);
-          } else {
-            console.warn("Usuário da URL não encontrado no Firestore:", chatUserId);
+        // Busca os dados do 'caller' (quem está ligando)
+        getDoc(doc(db, "users", callData.callerId)).then(userDoc => {
+          if (userDoc.exists()) {
+            const callerData = userDoc.data();
+            // Toca um som de chamada
+            // new Audio('/path/to/ringtone.mp3').play();
+            
+            // Define a chamada como ATIVA (INCOMING) no estado do React
+            setActiveCall({
+              state: CallState.INCOMING,
+              type: callData.type,
+              withUser: {
+                id: callerData.id,
+                name: callerData.name,
+                avatar: callerData.avatar,
+                relationship: callerData.relationship,
+                status: callerData.status,
+              },
+              channelName: callData.channelName,
+              docId: callDoc.id, // Guarda o ID do documento da chamada
+            });
           }
         });
       }
-    }
-  }, [currentUser, chatWithUser]); // Depende do currentUser estar carregado
+    });
 
-  const handleLogout = () => {
-    // Atualiza o status para offline antes de deslogar
-    if (currentUser) {
-      const userRef = doc(db, 'users', currentUser.id);
-      setDoc(userRef, { lastSeen: serverTimestamp(), status: 'offline' }, { merge: true });
-    }
-    auth.signOut(); // Simples assim
-    setCurrentUser(null);
-    setChatWithUser(null);
-  };
+    return () => unsubscribe(); // Limpa o ouvinte
+  }, [currentUser]);
+  // ------------------------------------------
 
-  const handleSelectUser = (user: User) => {
-    setChatWithUser(user);
-  };
+  // ... (handleLogout, handleSelectUser - continuam iguais)
 
-  // Esta função agora salva a mensagem no Firestore
+  // --- handleSendMessage (AJUSTADO) ---
   const handleSendMessage = async (type: MessageType, content: string, duration?: number) => {
-    if (!currentUser || !chatWithUser) return;
-
-    // Cria um ID de chat único e ordenado
-    const chatId = currentUser.id > chatWithUser.id 
-      ? `${currentUser.id}_${chatWithUser.id}` 
-      : `${chatWithUser.id}_${currentUser.id}`;
-    
-    // Referência para a sub-coleção de mensagens dentro do chat
-    const messagesRef = collection(db, 'chats', chatId, 'messages');
-
+    // ... (código de 'chatId', 'messagesRef' - continua igual)
     try {
       await addDoc(messagesRef, {
-        senderId: currentUser.id,
-        receiverId: chatWithUser.id,
-        type,
-        content,
-        timestamp: serverTimestamp(), // Usa o timestamp do servidor
-        duration: duration || null,
-        isRead: false, // <-- ESTA É A MUDANÇA
+        // ... (dados da mensagem - continua igual)
+        isRead: false,
       });
     } catch (error) {
       console.error("Erro ao enviar mensagem: ", error);
     }
   };
   
-  // Vamos deixar as chamadas para depois
-  const handleStartCall = (type: 'audio' | 'video') => {
-    if (!chatWithUser) return;
-    alert("Função de chamada ainda não implementada.");
+  // --- handleStartCall (AJUSTADO) ---
+  const handleStartCall = async (type: 'audio' | 'video') => {
+    if (!currentUser || !chatWithUser) return;
+
+    // 1. Cria um nome de canal único
+    const channelName = `call_${currentUser.id}_${chatWithUser.id}`;
+    
+    // 2. Cria o documento da chamada no Firestore
+    const callsRef = collection(db, "calls");
+    const callDoc = await addDoc(callsRef, {
+      callerId: currentUser.id,
+      receiverId: chatWithUser.id,
+      channelName: channelName,
+      type: type === 'audio' ? CallType.AUDIO : CallType.VIDEO,
+      status: "ringing", // A chamada está "tocando"
+      createdAt: serverTimestamp(),
+    });
+
+    // 3. Define a chamada como ATIVA (OUTGOING) no estado do React
+    setActiveCall({
+      state: CallState.OUTGOING,
+      type: type === 'audio' ? CallType.AUDIO : CallType.VIDEO,
+      withUser: chatWithUser,
+      channelName: channelName,
+      docId: callDoc.id, // Guarda o ID do documento
+    });
   };
   
-  const handleAcceptCall = () => {
-    // TODO: Implementar com WebRTC
+  // --- handleAcceptCall (AJUSTADO) ---
+  const handleAcceptCall = async () => {
+    if (!activeCall || !activeCall.docId) return;
+
+    // 1. Atualiza o documento da chamada no Firestore para 'active'
+    const callRef = doc(db, "calls", activeCall.docId);
+    await updateDoc(callRef, {
+      status: "active"
+    });
+
+    // 2. Define o estado local como ATIVO
+    setActiveCall(prev => prev ? { ...prev, state: CallState.ACTIVE } : null);
   };
   
-  const handleEndCall = () => {
-    // TODO: Implementar com WebRTC
+  // --- handleEndCall (AJUSTADO) ---
+  const handleEndCall = async () => {
+    if (!activeCall || !activeCall.docId) return;
+
+    // 1. Deleta o documento da chamada no Firestore
+    const callRef = doc(db, "calls", activeCall.docId);
+    try {
+      await deleteDoc(callRef);
+    } catch (error) {
+      console.error("Erro ao deletar chamada:", error);
+    }
+
+    // 2. Limpa o estado local
     setActiveCall(null);
   };
 
-  if (loadingAuth) {
-    // Você pode criar um componente de 'Loading' bonito aqui
-    return <div className="flex h-screen items-center justify-center">Carregando...</div>;
-  }
-
-  if (!currentUser) {
-    return <LoginScreen />; // Não precisa mais de props
-  }
+  // ... (if loadingAuth, if !currentUser - continuam iguais)
 
   return (
     <div className="h-dvh w-screen font-sans overflow-hidden">
-        {activeCall && <CallUI call={activeCall} onAcceptCall={handleAcceptCall} onEndCall={handleEndCall} currentUser={currentUser}/>}
+        {/* --- MODIFICADO: Usa o CallManager e passa o App ID --- */}
+        {activeCall && currentUser && (
+          <CallManager 
+            call={activeCall} 
+            onAcceptCall={handleAcceptCall} 
+            onEndCall={handleEndCall} 
+            currentUser={currentUser}
+            agoraAppId={AGORA_APP_ID}
+          />
+        )}
 
         {/* --- LAYOUT PARA CELULAR --- */}
-        {/* Mostra SÓ a lista OU SÓ o chat. O 'md:hidden' esconde isso no desktop. */}
         <div className="h-full w-full md:hidden">
-            {!chatWithUser ? (
-                <FamilyList
-                    currentUser={currentUser}
-                    onSelectUser={handleSelectUser}
-                    onLogout={handleLogout}
-                />
-            ) : (
-                <ChatWindow
-                    currentUser={currentUser}
-                    chatWithUser={chatWithUser}
-                    onSendMessage={handleSendMessage}
-                    onStartCall={handleStartCall}
-                    onGoBack={() => setChatWithUser(null)}
-                />
-            )}
+            {/* ... (renderização condicional de FamilyList ou ChatWindow - continua igual) */}
         </div>
 
         {/* --- LAYOUT PARA DESKTOP --- */}
-        {/* Mostra os dois lado a lado. O 'hidden' esconde isso no celular. */}
         <div className="hidden md:flex h-full w-full">
-            {/* Lado Esquerdo: Lista */}
-            <div className="w-auto">
-                <FamilyList
-                    currentUser={currentUser}
-                    onSelectUser={handleSelectUser}
-                    onLogout={handleLogout}
-                />
-            </div>
-            {/* Lado Direito: Chat ou Placeholder */}
-            <div className="flex-1 h-full">
-                {chatWithUser ? (
-                    <ChatWindow
-                        currentUser={currentUser}
-                        chatWithUser={chatWithUser}
-                        onSendMessage={handleSendMessage}
-                        onStartCall={handleStartCall}
-                        onGoBack={() => setChatWithUser(null)}
-                    />
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full bg-gray-50 text-gray-500">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-32 w-32 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                        <p className="text-2xl">Selecione uma pessoa para conversar</p>
-                    </div>
-                )}
-            </div>
+            {/* ... (renderização de FamilyList e ChatWindow/Placeholder - continua igual) */}
         </div>
 
     </div>
