@@ -72,27 +72,33 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   // --- MUDANÇA: Adiciona estado 'isJoined' ---
   const [isJoined, setIsJoined] = useState(false);
 
-  const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack();
-  const { localCameraTrack, camReady } = useLocalCameraTrack();
+  // --- MUDANÇA: Os tracks SÓ SÃO CRIADOS quando o state for ACTIVE ---
+  // Isso previne que a câmera ligue antes da hora
+  const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack(state !== CallState.ACTIVE);
+  const { localCameraTrack, camReady } = useLocalCameraTrack(state !== CallState.ACTIVE);
   
   const agoraClient = useRTCClient();
 
   // useEffect SEPARADO #1: Entrar e Sair do Canal
   useEffect(() => {
+    let didJoin = false; // Flag para garantir que só saímos se entramos
     if (state === CallState.ACTIVE) {
-      // Entra no canal e, QUANDO TERMINAR, seta isJoined para true
+      console.log("useEffect [Join]: Estado é ATIVO. Tentando entrar no canal...");
+      // O 'join' é assíncrono. Esperamos ele terminar.
       agoraClient.join(agoraAppId, channelName, null, currentUser.id)
         .then(() => {
-          console.log("Usuário entrou no canal!");
-          setIsJoined(true);
+          console.log("useEffect [Join]: SUCESSO. Usuário entrou no canal!");
+          didJoin = true;
+          setIsJoined(true); // <-- Seta 'isJoined' para true
         });
     }
 
     // Função de limpeza
     return () => {
-      if (state === CallState.ACTIVE) {
+      console.log("useEffect [Join]: Limpeza. Saindo do canal.");
+      setIsJoined(false); // Reseta o estado
+      if (didJoin) { // Só sai se tiver entrado
         agoraClient.leave();
-        setIsJoined(false); // Reseta o estado
       }
     };
   }, [state, agoraClient, agoraAppId, channelName, currentUser.id]);
@@ -101,32 +107,18 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   useEffect(() => {
     // --- MUDANÇA: Só publica se 'isJoined' for true ---
     if (isJoined && micReady && localMicrophoneTrack) {
-      console.log("Publicando microfone...");
-      localMicrophoneTrack.setEnabled(true);
+      console.log("useEffect [Mic]: Publicando microfone...");
       agoraClient.publish([localMicrophoneTrack]);
     }
-
-    return () => {
-      if (localMicrophoneTrack) {
-        localMicrophoneTrack.setEnabled(false);
-      }
-    };
   }, [isJoined, micReady, localMicrophoneTrack, agoraClient]); // Depende do 'isJoined'
 
   // useEffect SEPARADO #3: Publicar (enviar) Câmera
   useEffect(() => {
     // --- MUDANÇA: Só publica se 'isJoined' for true ---
     if (isJoined && camReady && localCameraTrack && type === CallType.VIDEO) {
-      console.log("Publicando câmera...");
-      localCameraTrack.setEnabled(true);
+      console.log("useEffect [Cam]: Publicando câmera...");
       agoraClient.publish([localCameraTrack]);
     }
-    
-    return () => {
-      if (localCameraTrack) {
-        localCameraTrack.setEnabled(false);
-      }
-    };
   }, [isJoined, camReady, localCameraTrack, type, agoraClient]); // Depende do 'isJoined'
 
   // useEffect SEPARADO #4: Timer da Chamada (Sem mudanças)
