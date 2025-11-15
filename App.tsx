@@ -14,6 +14,9 @@ import { requestPermissionAndSaveToken } from './src/fcm';
 import LoginScreen from './components/LoginScreen';
 import FamilyList from './components/FamilyList';
 import ChatWindow from './components/ChatWindow';
+// --- IMPORTAÇÃO NOVA ---
+import CameraModal from './components/CameraModal';
+// ----------------------
 import type { User, Message, ActiveCall } from './types';
 import { MessageType, CallState, CallType } from './types';
 
@@ -26,37 +29,34 @@ function App() {
   
   const [chatWithUser, setChatWithUser] = useState<User | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  
+  // --- NOVO ESTADO PARA O MODAL DA CÂMERA ---
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  // ----------------------------------------
 
-  // --- useEffect DE LOGIN CORRIGIDO ---
+  // useEffect de Login (CORRIGIDO)
   useEffect(() => {
     if (userAuth) {
-      // 1. Usuário logou com Google. Vamos checar o status dele.
       const userRef = doc(db, 'users', userAuth.uid);
       const pendingRef = doc(db, 'pendingUsers', userAuth.uid);
       
       const checkUserStatus = async () => {
-        // 2. Ele está na lista de 'users' (aprovados)?
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
-          // 2a. SIM, APROVADO! Carrega o perfil e entra no app.
           const userData = userSnap.data() as User;
           setCurrentUser(userData);
           setDoc(userRef, { lastSeen: serverTimestamp(), status: 'online' }, { merge: true });
           requestPermissionAndSaveToken(userAuth.uid);
-          return; // Para a execução
+          return;
         }
         
-        // 3. Ele não está aprovado. Ele já está na lista 'pendingUsers'?
         const pendingSnap = await getDoc(pendingRef);
         if (pendingSnap.exists()) {
-          // 3a. SIM, PENDENTE. Ele já pediu antes.
           alert("Seu acesso ainda está aguardando aprovação de um administrador. Por favor, tente novamente mais tarde.");
           auth.signOut();
-          return; // Para a execução
+          return;
         }
 
-        // 4. NÃO (para ambos). Ele é um USUÁRIO NOVO.
-        // Adiciona ele na lista de pendentes.
         await setDoc(pendingRef, {
           id: userAuth.uid,
           name: userAuth.displayName || 'Usuário',
@@ -68,15 +68,11 @@ function App() {
         alert("Obrigado por se registrar! Seu acesso precisa ser aprovado por um administrador. Por favor, aguarde.");
         auth.signOut();
       };
-
       checkUserStatus();
-      
     } else {
-      // Usuário deslogou
       setCurrentUser(null);
     }
-  }, [userAuth]); // Roda sempre que o estado de auth do Google mudar
-  // ----------------------------------------
+  }, [userAuth]);
 
   // useEffect (Deep Link de Notificação de Chamada)
   useEffect(() => {
@@ -241,16 +237,27 @@ function App() {
     setActiveCall(null);
   };
 
-  // --- RENDERIZAÇÃO (MODIFICADA) ---
+  // --- RENDERIZAÇÃO ---
   if (loadingAuth) {
     return <div className="flex h-screen items-center justify-center">Carregando...</div>;
   }
 
-  // Se o usuário não está logado OU não foi aprovado, mostra LoginScreen
   if (!currentUser) {
     return <LoginScreen />;
   }
-  // --------------------------------
+
+  // --- RENDERIZAÇÃO DO MODAL DA CÂMERA (NOVO) ---
+  if (isCameraOpen && currentUser && chatWithUser) {
+    return (
+      <CameraModal 
+        onClose={() => setIsCameraOpen(false)}
+        onSendMessage={handleSendMessage}
+        currentUser={currentUser}
+        chatWithUser={chatWithUser}
+      />
+    );
+  }
+  // ---------------------------------------------
 
   return (
     <div className="h-dvh w-screen font-sans overflow-hidden">
@@ -281,6 +288,7 @@ function App() {
                     onSendMessage={handleSendMessage}
                     onStartCall={handleStartCall}
                     onGoBack={() => setChatWithUser(null)}
+                    onCameraOpen={() => setIsCameraOpen(true)} // <-- Passa a função
                 />
             )}
         </div>
@@ -302,6 +310,7 @@ function App() {
                         onSendMessage={handleSendMessage}
                         onStartCall={handleStartCall}
                         onGoBack={() => setChatWithUser(null)}
+                        onCameraOpen={() => setIsCameraOpen(true)} // <-- Passa a função
                     />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full bg-gray-50 text-gray-500">

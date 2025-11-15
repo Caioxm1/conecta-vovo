@@ -6,12 +6,12 @@ import { v4 as uuid } from 'uuid';
 
 interface MessageInputProps {
   onSendMessage: (type: MessageType, content: string, duration?: number) => void;
+  onCameraOpen: () => void; // <-- ARQUIVO ATUALIZADO AQUI
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, onCameraOpen }) => {
   const [text, setText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
-  // Estado de upload modificado para saber O QUE está sendo enviado
   const [uploadStatus, setUploadStatus] = useState<null | 'audio' | 'image'>(null); 
   const [recordingTime, setRecordingTime] = useState(0);
   
@@ -19,7 +19,6 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
-  // Ref para o input de arquivo escondido
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -59,7 +58,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
         };
 
         mediaRecorderRef.current.onstop = async () => {
-            setUploadStatus('audio'); // Mostra "Enviando áudio..."
+            setUploadStatus('audio');
             const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
             const audioDuration = recordingTime; 
 
@@ -76,7 +75,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
             } finally {
               streamRef.current?.getTracks().forEach(track => track.stop());
               streamRef.current = null;
-              setUploadStatus(null); // Limpa o status
+              setUploadStatus(null);
             }
         };
 
@@ -103,42 +102,31 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
     }
   };
 
-  // --- NOVA FUNÇÃO: Dispara o clique no input de arquivo ---
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
 
-  // --- NOVA FUNÇÃO: Lida com a escolha do arquivo ---
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
       return;
     }
-
-    // Verifica se é uma imagem
     if (!file.type.startsWith('image/')) {
         alert("Por favor, selecione apenas arquivos de imagem.");
         return;
     }
-
-    setUploadStatus('image'); // Mostra "Enviando imagem..."
-
+    setUploadStatus('image'); 
     const fileName = `images/${uuid()}-${file.name}`;
     const storageRef = ref(storage, fileName);
-
     try {
-      // 1. Faz o upload da imagem
       const snapshot = await uploadBytes(storageRef, file);
-      // 2. Pega a URL de download
       const downloadURL = await getDownloadURL(snapshot.ref);
-      // 3. Envia a URL como mensagem
       onSendMessage(MessageType.IMAGE, downloadURL);
     } catch (error) {
       console.error("Erro ao fazer upload da imagem:", error);
       alert("Não foi possível enviar a imagem.");
     } finally {
-      setUploadStatus(null); // Limpa o status
-      // Limpa o valor do input para permitir enviar a mesma foto de novo
+      setUploadStatus(null);
       if (event.target) {
         event.target.value = '';
       }
@@ -151,7 +139,6 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
     return `${mins}:${secs}`;
   };
 
-  // --- LÓGICA DE UPLOAD MODIFICADA ---
   if (uploadStatus) {
     return (
       <div className="p-4 bg-white border-t border-gray-200 text-center">
@@ -179,13 +166,24 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
       ) : (
         <div className="flex items-center space-x-2">
           
-          {/* --- BOTÃO DE UPLOAD (CLIPE) NOVO --- */}
+          {/* --- BOTÃO DE CLIPE (GALERIA) --- */}
           <button onClick={handleUploadClick} className="p-3 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.414a4 4 0 00-5.656-5.656l-6.415 6.415a6 6 0 108.486 8.486L20.5 13" />
             </svg>
           </button>
-          {/* ------------------------------------- */}
+          
+          {/* --- BOTÃO DE CÂMERA (NOVO) --- */}
+          <button 
+            onClick={onCameraOpen} 
+            className="p-3 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+          {/* ------------------------------- */}
           
           <input
             type="text"
@@ -208,15 +206,14 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
         </div>
       )}
       
-      {/* --- INPUT DE ARQUIVO ESCONDIDO (NOVO) --- */}
+      {/* Input de arquivo escondido (para galeria) */}
       <input
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
         className="hidden"
-        accept="image/*" // Aceita apenas imagens
+        accept="image/*"
       />
-      {/* -------------------------------------- */}
     </div>
   );
 };

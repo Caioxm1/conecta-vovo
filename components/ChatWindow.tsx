@@ -16,11 +16,11 @@ interface ChatWindowProps {
   onSendMessage: (type: MessageType, content: string, duration?: number) => void;
   onStartCall: (type: 'audio' | 'video') => void;
   onGoBack: () => void;
+  onCameraOpen: () => void; // <-- ARQUIVO ATUALIZADO AQUI
 }
 
 // --- ÍCONE DE STATUS (Preto e Vermelho) ---
 const MessageStatusIcon: React.FC<{ isRead: boolean }> = ({ isRead }) => {
-  // 2 pontos VERMELHOS se isRead for true
   if (isRead) {
     return (
       <svg className="w-5 h-5 inline-block text-red-500" viewBox="0 0 20 20" fill="currentColor">
@@ -29,7 +29,6 @@ const MessageStatusIcon: React.FC<{ isRead: boolean }> = ({ isRead }) => {
       </svg>
     );
   }
-  // 2 pontos PRETOS se isRead for false
   return (
     <svg className="w-5 h-5 inline-block text-black" viewBox="0 0 20 20" fill="currentColor">
       <circle cx="6" cy="10" r="2" />
@@ -40,7 +39,7 @@ const MessageStatusIcon: React.FC<{ isRead: boolean }> = ({ isRead }) => {
 // ---------------------------------
 
 
-// O componente MessageBubble (MODIFICADO)
+// O componente MessageBubble
 const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender: User; }> = ({ message, isCurrentUser, sender }) => {
   const alignment = isCurrentUser ? 'justify-end' : 'justify-start';
   const colors = isCurrentUser ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-800';
@@ -53,8 +52,6 @@ const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender
   
   const renderContent = () => {
     switch (message.type) {
-      
-      // --- NOVO CASE PARA IMAGEM ---
       case MessageType.IMAGE:
         return (
           <img 
@@ -63,8 +60,6 @@ const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender
             className="max-w-xs md:max-w-sm rounded-lg" 
           />
         );
-      // -----------------------------
-        
       case MessageType.VOICE:
         return (
           <audio src={message.content} controls className="w-64" />
@@ -97,11 +92,9 @@ const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender
     <div className={`flex items-end gap-3 w-full ${alignment} my-2`}>
         {!isCurrentUser && <img src={sender.avatar} alt={sender.name} className="w-10 h-10 rounded-full" />}
         
-        {/* MODIFICADO: Aplicado 'overflow-hidden' se for uma imagem para os cantos arredondados funcionarem */}
         <div className={`p-4 rounded-2xl max-w-lg ${colors} ${isCurrentUser ? 'rounded-br-none' : 'rounded-bl-none'} ${message.type === MessageType.IMAGE ? 'overflow-hidden' : ''}`}>
           {renderContent()}
           
-          {/* Não mostra o timestamp/status para imagens (para ficar mais limpo) */}
           {message.type !== MessageType.IMAGE && (
             <div className="flex items-center justify-end space-x-1 mt-2">
               <span className={`text-xs ${isCurrentUser ? 'text-green-200' : 'text-gray-500'}`}>
@@ -119,7 +112,7 @@ const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender
 };
 
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSendMessage, onStartCall, onGoBack }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSendMessage, onStartCall, onGoBack, onCameraOpen }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Busca as mensagens em tempo real
@@ -233,7 +226,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
         ))}
         <div ref={messagesEndRef} />
       </main>
-      <MessageInput onSendMessage={onSendMessage} />
+      
+      {/* Passa onCameraOpen para o MessageInput */}
+      <MessageInput onSendMessage={onSendMessage} onCameraOpen={onCameraOpen} />
     </div>
   );
 };
