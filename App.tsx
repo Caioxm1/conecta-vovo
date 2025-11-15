@@ -3,7 +3,7 @@ import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, db } from './firebase';
 import { 
   doc, setDoc, serverTimestamp, collection, addDoc, getDoc,
-  onSnapshot, // onSnapshot é a chave aqui
+  onSnapshot, 
   updateDoc,
   deleteDoc,
   where,
@@ -29,30 +29,39 @@ function App() {
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
-  // --- useEffect DE LOGIN ATUALIZADO PARA onSnapshot ---
+  // --- useEffect DE LOGIN CORRIGIDO (QUEBRA DO LOOP) ---
   useEffect(() => {
-    let unsubscribeUser: () => void = () => {}; // Função para parar de ouvir
+    let unsubscribeUser: () => void = () => {}; 
+    let tokenRequested = false; // <-- Variável de controle para o loop
 
     if (userAuth) {
-      // 1. Usuário logou com Google. Vamos checar o status dele.
       const userRef = doc(db, 'users', userAuth.uid);
       const pendingRef = doc(db, 'pendingUsers', userAuth.uid);
       
-      // Ouve o documento do usuário APROVADO em tempo real
+      // Ouve o documento do usuário APROVADO
       unsubscribeUser = onSnapshot(userRef, (userSnap) => {
         if (userSnap.exists()) {
-          // 1a. SIM, APROVADO! Carrega o perfil.
+          // 1. APROVADO! Carrega o perfil.
           const userData = userSnap.data() as User;
           setCurrentUser(userData);
           
-          // Atualiza o status para "online" (só na primeira vez)
-          if (currentUser === null) {
+          // --- LÓGICA DE CORREÇÃO DO LOOP ---
+          // Só roda na primeira vez que o usuário é carregado
+          if (!tokenRequested) { 
+            tokenRequested = true; // Marca como feito
+            
+            // Atualiza o status para "online"
             setDoc(userRef, { lastSeen: serverTimestamp(), status: 'online' }, { merge: true });
+            
+            // Pede o token de notificação (só 1 vez)
             requestPermissionAndSaveToken(userAuth.uid);
           }
+          // ------------------------------------
+
         } else {
-          // 1b. NÃO APROVADO (Pendente ou novo)
-          // Precisamos verificar se ele é novo ou já pendente
+          // 2. NÃO APROVADO (Pendente ou novo)
+          // Para de ouvir o documento 'users' para evitar loops de login
+          unsubscribeUser(); 
           checkPendingStatus(userAuth.uid);
         }
       });
@@ -60,11 +69,11 @@ function App() {
       const checkPendingStatus = async (uid: string) => {
         const pendingSnap = await getDoc(pendingRef);
         if (pendingSnap.exists()) {
-          // 2. JÁ PENDENTE.
+          // 3. JÁ PENDENTE.
           alert("Seu acesso ainda está aguardando aprovação de um administrador. Por favor, tente novamente mais tarde.");
           auth.signOut();
         } else {
-          // 3. USUÁRIO NOVO. Adiciona na lista de pendentes.
+          // 4. USUÁRIO NOVO.
           await setDoc(pendingRef, {
             id: userAuth.uid,
             name: userAuth.displayName || 'Usuário',
@@ -84,13 +93,13 @@ function App() {
       setCurrentUser(null);
     }
     
-    // Limpeza: parar de ouvir o snapshot quando o usuário deslogar
+    // Limpeza
     return () => unsubscribeUser();
     
-  }, [userAuth]); // Roda sempre que o estado de auth do Google mudar
+  }, [userAuth]); // Roda só quando o userAuth (do Google) muda
   // ----------------------------------------
 
-  // useEffect (Deep Link de Notificação de Chamada)
+  // useEffect (Deep Link de Notificação de Chamada) - Sem mudanças
   useEffect(() => {
     if (!currentUser) return;
     const params = new URLSearchParams(window.location.search);
