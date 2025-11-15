@@ -16,7 +16,29 @@ interface ChatWindowProps {
   onGoBack: () => void;
 }
 
-// O componente MessageBubble
+// --- NOVO COMPONENTE DE ÍCONE ---
+const MessageStatusIcon: React.FC<{ isRead: boolean }> = ({ isRead }) => {
+  // 2 pontos azuis se isRead for true
+  if (isRead) {
+    return (
+      <svg className="w-5 h-5 inline-block text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+        <circle cx="6" cy="10" r="2" />
+        <circle cx="12" cy="10" r="2" />
+      </svg>
+    );
+  }
+  // 2 pontos pretos (cinza) se isRead for false
+  return (
+    <svg className="w-5 h-5 inline-block text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+      <circle cx="6" cy="10" r="2" />
+      <circle cx="12" cy="10" r="2" />
+    </svg>
+  );
+};
+// ---------------------------------
+
+
+// O componente MessageBubble (MODIFICADO)
 const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender: User; }> = ({ message, isCurrentUser, sender }) => {
   const alignment = isCurrentUser ? 'justify-end' : 'justify-start';
   const colors = isCurrentUser ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-800';
@@ -62,9 +84,18 @@ const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender
         {!isCurrentUser && <img src={sender.avatar} alt={sender.name} className="w-10 h-10 rounded-full" />}
         <div className={`p-4 rounded-2xl max-w-lg ${colors} ${isCurrentUser ? 'rounded-br-none' : 'rounded-bl-none'}`}>
           {renderContent()}
-          <span className={`text-xs mt-2 block ${isCurrentUser ? 'text-green-200' : 'text-gray-500'} text-right`}>
-            {formatTimestamp(message.timestamp)}
-          </span>
+          
+          {/* --- MODIFICAÇÃO AQUI --- */}
+          <div className="flex items-center justify-end space-x-1 mt-2">
+            <span className={`text-xs ${isCurrentUser ? 'text-green-200' : 'text-gray-500'}`}>
+              {formatTimestamp(message.timestamp)}
+            </span>
+            {/* Mostra o ícone de status APENAS para as mensagens do usuário atual */}
+            {isCurrentUser && (
+              <MessageStatusIcon isRead={message.isRead} />
+            )}
+          </div>
+          {/* ------------------------- */}
         </div>
         {isCurrentUser && <img src={sender.avatar} alt={sender.name} className="w-10 h-10 rounded-full" />}
     </div>
@@ -93,6 +124,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
       id: doc.id,
       ...data,
       timestamp: timestamp,
+      // Garante que isRead exista (se não vier do firestore, é false)
+      isRead: data.isRead || false, 
     } as Message;
   }) || [];
 
@@ -102,7 +135,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
 
   useEffect(scrollToBottom, [messages]); // Rola para baixo quando as mensagens mudam
 
-  // --- NOVO useEffect PARA MARCAR COMO LIDO ---
+  // --- useEffect PARA MARCAR COMO LIDO (MODIFICADO) ---
   useEffect(() => {
     // Função assíncrona para marcar mensagens como lidas
     const markMessagesAsRead = async () => {
@@ -133,8 +166,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
     // Roda a função assim que o chat for aberto
     markMessagesAsRead();
 
-    // Roda de novo se o chatWithUser mudar (mas não se 'messages' mudar, para evitar loops)
-  }, [currentUser.id, chatWithUser.id, messagesRef]);
+    // Roda de novo se o chatWithUser mudar ou novas mensagens chegarem
+  }, [currentUser.id, chatWithUser.id, messagesRef, messagesSnapshot]);
   // ---------------------------------------------
 
   return (

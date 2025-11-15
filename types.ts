@@ -22,6 +22,7 @@ export interface Message {
   content: string; 
   timestamp: string;
   duration?: number;
+  isRead: boolean; // <-- ARQUIVO ATUALIZADO AQUI
 }
 
 // O resto (CallState, CallType, ActiveCall) pode continuar igual
@@ -41,4 +42,7 @@ export interface ActiveCall {
   state: CallState;
   type: CallType;
   withUser: User;
+  // Adicionados docId e channelName que faltavam
+  docId?: string;
+  channelName?: string;
 }
