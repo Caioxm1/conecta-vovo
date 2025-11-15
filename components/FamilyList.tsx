@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useCollection } from 'react-firebase-hooks/firestore';
 // --- Imports atualizados ---
 import { collection, query, where, doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase'; 
+import { db, auth } from '../firebase'; // <--- CORREÇÃO ADICIONADA AQUI
 // -------------------------
 
 import type { User, Message } from '../types';
@@ -15,7 +15,7 @@ interface FamilyListProps {
   onLogout: () => void;
 }
 
-// --- NOVO COMPONENTE: PAINEL DE ADMIN ---
+// --- COMPONENTE: PAINEL DE ADMIN ---
 const AdminPanel: React.FC = () => {
   // 1. Hook para buscar usuários pendentes
   const [pendingSnapshot, loadingPending] = useCollection(
@@ -103,7 +103,7 @@ const AdminPanel: React.FC = () => {
         <div className="max-h-32 overflow-y-auto">
           {approvedUsers.length <= 1 && <p className="text-sm text-gray-500">Nenhum outro usuário para remover.</p>}
           {approvedUsers.map(user => (
-            // Não deixa você se remover
+            // Não deixa você se remover (AGORA COM 'auth' FUNCIONANDO)
             user.id !== auth.currentUser?.uid && (
               <div key={user.id} className="flex justify-between items-center p-2 bg-white rounded shadow-sm my-1">
                 <p className="font-semibold">{user.name}</p>
