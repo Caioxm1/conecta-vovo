@@ -1,43 +1,21 @@
 import React from 'react';
-import { auth, googleProvider, db } from '../firebase'; // Importamos o Firebase
+import { auth, googleProvider } from '../firebase'; // Apenas 'auth' e 'googleProvider'
 import { signInWithPopup } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore'; // serverTimestamp importado
+// REMOVIDO: doc, setDoc, serverTimestamp
 
 const LoginScreen: React.FC = () => {
   
   const handleGoogleLogin = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-
-      if (user) {
-        // --- LÓGICA DE LOGIN MODIFICADA ---
-        
-        // 1. Salva o novo usuário na "sala de espera" (pendingUsers) para aprovação
-        const pendingUserRef = doc(db, 'pendingUsers', user.uid);
-        await setDoc(pendingUserRef, {
-          id: user.uid,
-          name: user.displayName || 'Usuário',
-          avatar: user.photoURL || `https://picsum.photos/seed/${user.uid}/200`,
-          email: user.email, // Salva o email para o Admin saber quem é
-          status: 'pending',
-          requestedAt: serverTimestamp(),
-        }, { merge: true }); // 'merge: true' caso ele tente logar de novo
-
-        // 2. Avisa o usuário que ele precisa esperar
-        alert("Obrigado por se registrar!\n\nSeu acesso precisa ser aprovado por um administrador. Por favor, aguarde e tente novamente mais tarde.");
-        
-        // 3. Desloga o usuário até ele ser aprovado
-        auth.signOut();
-      }
+      // A única responsabilidade deste componente é fazer o login.
+      // O App.tsx vai lidar com o que fazer com o usuário.
+      await signInWithPopup(auth, googleProvider);
+      
+      // REMOVIDO: Toda a lógica de setDoc, pendingUsers, alert e signOut
       
     } catch (error) {
       console.error("Erro ao fazer login com Google:", error);
-      
-      // Se o erro for de "usuário não aprovado" (que vamos forçar), não mostra
-      if (error.code !== "auth/user-not-found") { // Exemplo, pode ser outro
-         alert("Houve um erro ao tentar fazer login. Tente novamente.");
-      }
+      alert("Houve um erro ao tentar fazer login. Tente novamente.");
     }
   };
 

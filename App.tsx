@@ -27,33 +27,49 @@ function App() {
   const [chatWithUser, setChatWithUser] = useState<User | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
 
-  // --- useEffect DE LOGIN MODIFICADO ---
+  // --- useEffect DE LOGIN CORRIGIDO ---
   useEffect(() => {
     if (userAuth) {
-      // Usuário logou no Google. Ele está APROVADO?
+      // 1. Usuário logou com Google. Vamos checar o status dele.
       const userRef = doc(db, 'users', userAuth.uid);
+      const pendingRef = doc(db, 'pendingUsers', userAuth.uid);
       
-      getDoc(userRef).then(userSnap => {
+      const checkUserStatus = async () => {
+        // 2. Ele está na lista de 'users' (aprovados)?
+        const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
-          // 1. SIM, APROVADO! Carrega o perfil.
+          // 2a. SIM, APROVADO! Carrega o perfil e entra no app.
           const userData = userSnap.data() as User;
           setCurrentUser(userData);
-          
-          // Atualiza o status para "online"
           setDoc(userRef, { lastSeen: serverTimestamp(), status: 'online' }, { merge: true });
-          
-          // Pede token de notificação
           requestPermissionAndSaveToken(userAuth.uid);
-          
-        } else {
-          // 2. NÃO APROVADO (Pendente ou novo)
-          console.log("Usuário não aprovado tentou logar:", userAuth.displayName);
-          setCurrentUser(null); // Mantém ele na LoginScreen
-          
-          // (Opcional) Podemos deslogá-lo para forçar a tela de "Aguarde" do LoginScreen
-          // auth.signOut();
+          return; // Para a execução
         }
-      });
+        
+        // 3. Ele não está aprovado. Ele já está na lista 'pendingUsers'?
+        const pendingSnap = await getDoc(pendingRef);
+        if (pendingSnap.exists()) {
+          // 3a. SIM, PENDENTE. Ele já pediu antes.
+          alert("Seu acesso ainda está aguardando aprovação de um administrador. Por favor, tente novamente mais tarde.");
+          auth.signOut();
+          return; // Para a execução
+        }
+
+        // 4. NÃO (para ambos). Ele é um USUÁRIO NOVO.
+        // Adiciona ele na lista de pendentes.
+        await setDoc(pendingRef, {
+          id: userAuth.uid,
+          name: userAuth.displayName || 'Usuário',
+          avatar: userAuth.photoURL || `https://picsum.photos/seed/${userAuth.uid}/200`,
+          email: userAuth.email,
+          status: 'pending',
+          requestedAt: serverTimestamp(),
+        });
+        alert("Obrigado por se registrar! Seu acesso precisa ser aprovado por um administrador. Por favor, aguarde.");
+        auth.signOut();
+      };
+
+      checkUserStatus();
       
     } else {
       // Usuário deslogou
