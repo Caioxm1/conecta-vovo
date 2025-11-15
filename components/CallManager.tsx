@@ -73,8 +73,9 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   // --- A CORREÇÃO ESTÁ AQUI ---
   // Os hooks são chamados IMEDIATAMENTE.
   // Isso faz o navegador pedir permissão ENQUANTO está tocando.
-  const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack();
-  const { localCameraTrack, camReady } = useLocalCameraTrack(type === CallType.VIDEO); // Só liga a câmera se for vídeo
+  // Dizemos aos hooks para SÓ CRIAR as trilhas, mas NÃO publicá-las automaticamente.
+  const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack(true, { publish: false });
+  const { localCameraTrack, camReady } = useLocalCameraTrack(type === CallType.VIDEO, { publish: false });
   
   const agoraClient = useRTCClient();
 
