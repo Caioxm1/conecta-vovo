@@ -4,12 +4,13 @@ export interface User {
   avatar: string;
   relationship: string;
   status: 'online' | 'offline';
-  isAdmin?: boolean; // <-- ARQUIVO ATUALIZADO AQUI
+  isAdmin?: boolean; 
 }
 
 export enum MessageType {
   TEXT = 'text',
   VOICE = 'voice',
+  IMAGE = 'image', // <-- ARQUIVO ATUALIZADO AQUI
   VIDEO_CALL = 'video_call',
   AUDIO_CALL = 'audio_call',
   MISSED_CALL = 'missed_call',

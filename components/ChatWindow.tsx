@@ -1,6 +1,5 @@
 import React, { useRef, useEffect } from 'react';
 import { useCollection } from 'react-firebase-hooks/firestore';
-// Imports atualizados
 import { 
   collection, query, orderBy, Timestamp, getDocs, 
   writeBatch, where, doc, updateDoc 
@@ -41,7 +40,7 @@ const MessageStatusIcon: React.FC<{ isRead: boolean }> = ({ isRead }) => {
 // ---------------------------------
 
 
-// O componente MessageBubble
+// O componente MessageBubble (MODIFICADO)
 const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender: User; }> = ({ message, isCurrentUser, sender }) => {
   const alignment = isCurrentUser ? 'justify-end' : 'justify-start';
   const colors = isCurrentUser ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-800';
@@ -54,6 +53,18 @@ const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender
   
   const renderContent = () => {
     switch (message.type) {
+      
+      // --- NOVO CASE PARA IMAGEM ---
+      case MessageType.IMAGE:
+        return (
+          <img 
+            src={message.content} 
+            alt="Imagem enviada" 
+            className="max-w-xs md:max-w-sm rounded-lg" 
+          />
+        );
+      // -----------------------------
+        
       case MessageType.VOICE:
         return (
           <audio src={message.content} controls className="w-64" />
@@ -85,17 +96,22 @@ const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender
   return (
     <div className={`flex items-end gap-3 w-full ${alignment} my-2`}>
         {!isCurrentUser && <img src={sender.avatar} alt={sender.name} className="w-10 h-10 rounded-full" />}
-        <div className={`p-4 rounded-2xl max-w-lg ${colors} ${isCurrentUser ? 'rounded-br-none' : 'rounded-bl-none'}`}>
+        
+        {/* MODIFICADO: Aplicado 'overflow-hidden' se for uma imagem para os cantos arredondados funcionarem */}
+        <div className={`p-4 rounded-2xl max-w-lg ${colors} ${isCurrentUser ? 'rounded-br-none' : 'rounded-bl-none'} ${message.type === MessageType.IMAGE ? 'overflow-hidden' : ''}`}>
           {renderContent()}
           
-          <div className="flex items-center justify-end space-x-1 mt-2">
-            <span className={`text-xs ${isCurrentUser ? 'text-green-200' : 'text-gray-500'}`}>
-              {formatTimestamp(message.timestamp)}
-            </span>
-            {isCurrentUser && (
-              <MessageStatusIcon isRead={message.isRead} />
-            )}
-          </div>
+          {/* Não mostra o timestamp/status para imagens (para ficar mais limpo) */}
+          {message.type !== MessageType.IMAGE && (
+            <div className="flex items-center justify-end space-x-1 mt-2">
+              <span className={`text-xs ${isCurrentUser ? 'text-green-200' : 'text-gray-500'}`}>
+                {formatTimestamp(message.timestamp)}
+              </span>
+              {isCurrentUser && (
+                <MessageStatusIcon isRead={message.isRead} />
+              )}
+            </div>
+          )}
         </div>
         {isCurrentUser && <img src={sender.avatar} alt={sender.name} className="w-10 h-10 rounded-full" />}
     </div>
@@ -175,7 +191,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
 
   return (
     <div className="flex flex-col h-dvh bg-gray-50 w-full">
-      {/* --- CABEÇALHO MODIFICADO --- */}
+      {/* --- CABEÇALHO --- */}
       <header className="flex items-center p-4 bg-white shadow-md z-10">
         <button onClick={onGoBack} className="p-2 rounded-full hover:bg-gray-200 mr-4">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -190,7 +206,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
             
             <div className="flex items-center group">
                 <p className="text-gray-500">{chatWithUser.relationship}</p>
-                {/* Botão de lápis para editar */}
                 <button 
                     onClick={() => handleEditRelationship(chatWithUser)}
                     className="ml-2 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-black transition-all"
@@ -200,7 +215,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
                 </button>
             </div>
         </div>
-        {/* ------------------------------------- */}
         
         <div className="flex-grow"></div>
         <div className="flex items-center space-x-2">
