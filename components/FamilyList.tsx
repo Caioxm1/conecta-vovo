@@ -4,14 +4,14 @@ import { collection, query, where } from 'firebase/firestore';
 import { db } from '../firebase'; // Importamos
 
 import type { User, Message } from '../types';
-import { MessageType } from '../types';
+// Removido MessageType
 import CallHistoryModal from './CallHistoryModal';
+import UserRow from './UserRow'; // <-- IMPORTADO O NOVO COMPONENTE
 
 interface FamilyListProps {
   currentUser: User;
   onSelectUser: (user: User) => void;
   onLogout: () => void;
-  // Removido: family, allUsers, messages
 }
 
 const FamilyList: React.FC<FamilyListProps> = ({ currentUser, onSelectUser, onLogout }) => {
@@ -49,6 +49,7 @@ const FamilyList: React.FC<FamilyListProps> = ({ currentUser, onSelectUser, onLo
         currentUser={currentUser}
         allUsers={[...family, currentUser]} // Passando todos os usuários
       />
+      {/* MUDANÇA: 'w-full' foi trocado por 'w-screen' e 'md:w-full' */}
       <div className="flex flex-col h-dvh bg-white shadow-lg w-screen md:w-full md:max-w-sm p-6">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center">
@@ -75,21 +76,15 @@ const FamilyList: React.FC<FamilyListProps> = ({ currentUser, onSelectUser, onLo
         {/* Renderiza a lista de usuários buscada do Firestore */}
         <div className="space-y-4 flex-grow overflow-y-auto">
           {loadingUsers && <p>Carregando família...</p>}
+
+          {/* MUDANÇA: O 'button' foi trocado por 'UserRow' */}
           {family.map((user) => (
-            <button
+            <UserRow
               key={user.id}
-              onClick={() => onSelectUser(user)}
-              className="w-full flex items-center p-4 bg-gray-50 hover:bg-green-100 rounded-xl transition-all duration-300 ease-in-out transform hover:scale-105"
-            >
-              <div className="relative">
-                <img src={user.avatar} alt={user.name} className="w-16 h-16 rounded-full mr-6 border-4 border-white shadow-md" />
-                <span className={`absolute bottom-1 right-6 block h-4 w-4 rounded-full ${user.status === 'online' ? 'bg-green-500' : 'bg-gray-400'} border-2 border-white`}></span>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-800">{user.name}</p>
-                <p className="text-lg text-gray-500">{user.relationship}</p>
-              </div>
-            </button>
+              currentUser={currentUser}
+              user={user}
+              onSelectUser={onSelectUser}
+            />
           ))}
         </div>
       </div>

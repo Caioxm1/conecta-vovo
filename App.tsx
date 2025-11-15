@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthState } from 'react-firebase-hooks/auth'; // Hook para ouvir a autenticação
 import { auth, db } from './firebase'; // Importamos
-import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
-import { requestPermissionAndSaveToken } from './src/fcm'; // <-- ADICIONADO PARA NOTIFICAÇÕES PUSH
+// Adicionado 'getDoc' para a função de deep link
+import { doc, setDoc, serverTimestamp, collection, addDoc, getDoc } from 'firebase/firestore'; 
+import { requestPermissionAndSaveToken } from './src/fcm';
 
 import LoginScreen from './components/LoginScreen';
 import FamilyList from './components/FamilyList';
@@ -11,7 +12,7 @@ import CallUI from './components/CallUI';
 import type { User, Message, ActiveCall } from './types';
 import { MessageType, CallState, CallType } from './types';
 
-// A função 'showNotification' para notificações DENTRO do app (quando a aba está inativa)
+// A função 'showNotification' pode continuar a mesma
 const showNotification = (title: string, options: NotificationOptions) => {
     if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(title, options);
@@ -43,10 +44,6 @@ function App() {
       const userRef = doc(db, 'users', userAuth.uid);
       setDoc(userRef, { lastSeen: serverTimestamp(), status: 'online' }, { merge: true });
 
-      // --- SUBSTITUÍDO ---
-      // O bloco antigo de 'requestPermission' foi removido
-      
-      // --- ADICIONADO ---
       // Pede permissão e salva o token FCM para notificações PUSH
       requestPermissionAndSaveToken(userAuth.uid);
 
@@ -55,8 +52,40 @@ function App() {
     }
   }, [userAuth]);
 
-  // Os 'useEffect' de notificação de mensagem (quando o app está aberto)
-  // ... (Nós o removemos temporariamente para focar no PUSH, podemos readicionar depois se necessário) ...
+  // useEffect' para ler a URL (Deep Link)
+  useEffect(() => {
+    // Roda apenas se o usuário estiver logado e o chat AINDA não estiver definido
+    if (currentUser && !chatWithUser) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const chatUserId = urlParams.get('chatWith');
+
+      if (chatUserId) {
+        console.log("Encontrado 'chatWith' na URL, tentando abrir chat com:", chatUserId);
+        
+        // Precisamos buscar os dados desse usuário
+        const userRef = doc(db, "users", chatUserId);
+        getDoc(userRef).then((userSnap) => {
+          if (userSnap.exists()) {
+            const userData = userSnap.data();
+            const userToChat: User = {
+              id: userData.id,
+              name: userData.name,
+              avatar: userData.avatar,
+              relationship: userData.relationship || 'Família',
+              status: userData.status || 'offline',
+            };
+            // Abre a janela de chat com esse usuário
+            setChatWithUser(userToChat);
+
+            // Limpa a URL para não abrir de novo no F5
+            window.history.replaceState(null, '', window.location.pathname);
+          } else {
+            console.warn("Usuário da URL não encontrado no Firestore:", chatUserId);
+          }
+        });
+      }
+    }
+  }, [currentUser, chatWithUser]); // Depende do currentUser estar carregado
 
   const handleLogout = () => {
     // Atualiza o status para offline antes de deslogar
@@ -93,6 +122,7 @@ function App() {
         content,
         timestamp: serverTimestamp(), // Usa o timestamp do servidor
         duration: duration || null,
+        isRead: false, // <-- ESTA É A MUDANÇA
       });
     } catch (error) {
       console.error("Erro ao enviar mensagem: ", error);
@@ -140,7 +170,6 @@ function App() {
                 <ChatWindow
                     currentUser={currentUser}
                     chatWithUser={chatWithUser}
-                    // Props 'messages' e 'isTyping' removidas (corrigido)
                     onSendMessage={handleSendMessage}
                     onStartCall={handleStartCall}
                     onGoBack={() => setChatWithUser(null)}
@@ -165,7 +194,6 @@ function App() {
                     <ChatWindow
                         currentUser={currentUser}
                         chatWithUser={chatWithUser}
-                        // Props 'messages' e 'isTyping' removidas (corrigido)
                         onSendMessage={handleSendMessage}
                         onStartCall={handleStartCall}
                         onGoBack={() => setChatWithUser(null)}
@@ -182,7 +210,5 @@ function App() {
     </div>
   );
 }
-
-// Linhas duplicadas ou desnecessárias removidas
  
 export default App;

@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { useCollection } from 'react-firebase-hooks/firestore';
-import { collection, query, orderBy, Timestamp } from 'firebase/firestore';
+// ADICIONADO: getDocs, writeBatch, where
+import { collection, query, orderBy, Timestamp, getDocs, writeBatch, where } from 'firebase/firestore'; 
 import { db } from '../firebase';
 
 import type { User, Message } from '../types';
@@ -10,32 +11,28 @@ import MessageInput from './MessageInput';
 interface ChatWindowProps {
   currentUser: User;
   chatWithUser: User;
-  onSendMessage: (type: MessageType, content: string, duration?: number) => void; // 'duration' é opcional
+  onSendMessage: (type: MessageType, content: string, duration?: number) => void;
   onStartCall: (type: 'audio' | 'video') => void;
   onGoBack: () => void;
-  // Removido: messages, isTyping
 }
 
-// O componente MessageBubble pode continuar o mesmo, mas precisa
-// de um pequeno ajuste para o timestamp
+// O componente MessageBubble
 const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender: User; }> = ({ message, isCurrentUser, sender }) => {
   const alignment = isCurrentUser ? 'justify-end' : 'justify-start';
   const colors = isCurrentUser ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-800';
   
   const formatTimestamp = (dateString: string) => {
-    if (!dateString) return ''; // Proteção para timestamps ainda não sincronizados
+    if (!dateString) return ''; 
     const date = new Date(dateString);
     return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   };
   
-  // O 'renderContent' pode continuar o mesmo
   const renderContent = () => {
     switch (message.type) {
       case MessageType.VOICE:
         return (
           <audio src={message.content} controls className="w-64" />
         );
-      // ... resto do renderContent (continua igual)
       case MessageType.MISSED_CALL:
         return (
             <div className="flex items-center space-x-2">
@@ -105,6 +102,41 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
 
   useEffect(scrollToBottom, [messages]); // Rola para baixo quando as mensagens mudam
 
+  // --- NOVO useEffect PARA MARCAR COMO LIDO ---
+  useEffect(() => {
+    // Função assíncrona para marcar mensagens como lidas
+    const markMessagesAsRead = async () => {
+      // 1. Encontra todas as mensagens NÃO LIDAS que foram ENVIADAS PARA MIM
+      const unreadQuery = query(messagesRef,
+        where('receiverId', '==', currentUser.id),
+        where('isRead', '==', false)
+      );
+
+      const querySnapshot = await getDocs(unreadQuery);
+      
+      // Se não há mensagens não lidas, não faz nada
+      if (querySnapshot.empty) {
+        return;
+      }
+
+      // 2. Cria um "batch" (lote) para atualizar todas de uma vez
+      const batch = writeBatch(db);
+      querySnapshot.docs.forEach(doc => {
+        batch.update(doc.ref, { isRead: true });
+      });
+
+      // 3. "Comita" (envia) a atualização para o Firestore
+      await batch.commit();
+      console.log('Mensagens marcadas como lidas!');
+    };
+
+    // Roda a função assim que o chat for aberto
+    markMessagesAsRead();
+
+    // Roda de novo se o chatWithUser mudar (mas não se 'messages' mudar, para evitar loops)
+  }, [currentUser.id, chatWithUser.id, messagesRef]);
+  // ---------------------------------------------
+
   return (
     <div className="flex flex-col h-dvh bg-gray-50 w-full">
       <header className="flex items-center p-4 bg-white shadow-md z-10">
@@ -134,7 +166,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} isCurrentUser={msg.senderId === currentUser.id} sender={msg.senderId === currentUser.id ? currentUser : chatWithUser} />
         ))}
-        {/* 'isTyping' foi removido por simplicidade */}
         <div ref={messagesEndRef} />
       </main>
       <MessageInput onSendMessage={onSendMessage} />
