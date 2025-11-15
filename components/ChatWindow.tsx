@@ -1,6 +1,5 @@
 import React, { useRef, useEffect } from 'react';
 import { useCollection } from 'react-firebase-hooks/firestore';
-// ADICIONADO: getDocs, writeBatch, where
 import { collection, query, orderBy, Timestamp, getDocs, writeBatch, where } from 'firebase/firestore'; 
 import { db } from '../firebase';
 
@@ -16,20 +15,20 @@ interface ChatWindowProps {
   onGoBack: () => void;
 }
 
-// --- NOVO COMPONENTE DE ÍCONE ---
+// --- COMPONENTE DE ÍCONE ATUALIZADO ---
 const MessageStatusIcon: React.FC<{ isRead: boolean }> = ({ isRead }) => {
-  // 2 pontos azuis se isRead for true
+  // 2 pontos VERMELHOS se isRead for true
   if (isRead) {
     return (
-      <svg className="w-5 h-5 inline-block text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+      <svg className="w-5 h-5 inline-block text-red-500" viewBox="0 0 20 20" fill="currentColor">
         <circle cx="6" cy="10" r="2" />
         <circle cx="12" cy="10" r="2" />
       </svg>
     );
   }
-  // 2 pontos pretos (cinza) se isRead for false
+  // 2 pontos PRETOS se isRead for false
   return (
-    <svg className="w-5 h-5 inline-block text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+    <svg className="w-5 h-5 inline-block text-black" viewBox="0 0 20 20" fill="currentColor">
       <circle cx="6" cy="10" r="2" />
       <circle cx="12" cy="10" r="2" />
     </svg>
