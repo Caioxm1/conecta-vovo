@@ -68,54 +68,57 @@ const VideoCall: React.FC<{
 const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall, currentUser, agoraAppId }) => {
   const { state, type, withUser, channelName } = call;
   const [callDuration, setCallDuration] = useState(0);
+  const [isJoined, setIsJoined] = useState(false);
 
+  // --- A CORREÇÃO ESTÁ AQUI ---
+  // Os hooks são chamados IMEDIATAMENTE.
+  // Isso faz o navegador pedir permissão ENQUANTO está tocando.
   const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack();
-  const { localCameraTrack, camReady } = useLocalCameraTrack();
+  const { localCameraTrack, camReady } = useLocalCameraTrack(type === CallType.VIDEO); // Só liga a câmera se for vídeo
   
   const agoraClient = useRTCClient();
 
-  // --- useEffect SEPARADO #1: Entrar e Sair do Canal ---
-  // Roda apenas quando o 'state' muda
+  // useEffect SEPARADO #1: Entrar e Sair do Canal
   useEffect(() => {
+    let didJoin = false;
     if (state === CallState.ACTIVE) {
-      // Entra no canal
-      agoraClient.join(agoraAppId, channelName, null, currentUser.id);
+      console.log("useEffect [Join]: Estado é ATIVO. Tentando entrar no canal...");
+      agoraClient.join(agoraAppId, channelName, null, currentUser.id)
+        .then(() => {
+          console.log("useEffect [Join]: SUCESSO. Usuário entrou no canal!");
+          didJoin = true;
+          setIsJoined(true);
+        });
     }
 
-    // Função de limpeza (roda quando o componente sai da tela ou o 'state' muda)
     return () => {
-      // A função 'leave' (Sair) já faz o 'unpublish' e para os tracks.
-      // Esta é a única limpeza que precisamos.
-      if (state === CallState.ACTIVE) {
+      console.log("useEffect [Join]: Limpeza. Saindo do canal.");
+      setIsJoined(false);
+      if (didJoin) { 
         agoraClient.leave();
       }
     };
   }, [state, agoraClient, agoraAppId, channelName, currentUser.id]);
 
-  // --- useEffect SEPARADO #2: Publicar (enviar) Microfone ---
-  // Roda apenas quando o microfone está pronto (micReady)
+  // useEffect SEPARADO #2: Publicar (enviar) Microfone
   useEffect(() => {
-    // Se a chamada está ATIVA, e o mic está PRONTO, e o cliente está PRONTO...
-    if (state === CallState.ACTIVE && agoraClient && micReady && localMicrophoneTrack) {
-      // Liga o microfone e publica
+    // Só publica se JÁ ENTROU e o mic está PRONTO
+    if (isJoined && micReady && localMicrophoneTrack) {
+      console.log("useEffect [Mic]: Publicando microfone...");
       localMicrophoneTrack.setEnabled(true);
       agoraClient.publish([localMicrophoneTrack]);
     }
-    // --- CORREÇÃO: A função de limpeza foi removida ---
-    // Deixamos o useEffect #1 (com o 'leave') cuidar da limpeza.
-  }, [state, agoraClient, micReady, localMicrophoneTrack]); // Depende só do microfone
+  }, [isJoined, micReady, localMicrophoneTrack, agoraClient]);
 
-  // --- useEffect SEPARADO #3: Publicar (enviar) Câmera ---
-  // Roda apenas quando a câmera está pronta (camReady)
+  // useEffect SEPARADO #3: Publicar (enviar) Câmera
   useEffect(() => {
-    // Se a chamada está ATIVA, e a cam está PRONTA, e é vídeo...
-    if (state === CallState.ACTIVE && agoraClient && camReady && localCameraTrack && type === CallType.VIDEO) {
-      // Liga a câmera e publica
+    // Só publica se JÁ ENTROU e a cam está PRONTA
+    if (isJoined && camReady && localCameraTrack && type === CallType.VIDEO) {
+      console.log("useEffect [Cam]: Publicando câmera...");
       localCameraTrack.setEnabled(true);
       agoraClient.publish([localCameraTrack]);
     }
-    // --- CORREÇÃO: A função de limpeza foi removida ---
-  }, [state, agoraClient, camReady, localCameraTrack, type]); // Depende só da câmera
+  }, [isJoined, camReady, localCameraTrack, type, agoraClient]);
 
   // useEffect SEPARADO #4: Timer da Chamada (Sem mudanças)
   useEffect(() => {
