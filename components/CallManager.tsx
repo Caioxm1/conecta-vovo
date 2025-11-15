@@ -23,7 +23,7 @@ interface CallManagerProps {
   agoraAppId: string;
 }
 
-// Sub-componente que gerencia a lógica da chamada ATIVA (Sem mudanças)
+// Sub-componente (Sem mudanças)
 const VideoCall: React.FC<{ 
   channelName: string; 
   callType: CallType;
@@ -62,26 +62,22 @@ const VideoCall: React.FC<{
   );
 };
 
-// Componente Principal (COM A LÓGICA DE USEEFFECT CORRIGIDA)
+// Componente Principal (COM A LÓGICA DE PUBLICAÇÃO MANUAL)
 const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall, currentUser, agoraAppId }) => {
   const { state, type, withUser, channelName } = call;
   const [callDuration, setCallDuration] = useState(0);
   
-  // Este estado controla tudo. 
-  // Ele só se torna 'true' DEPOIS que entramos no canal.
+  // 1. Estado para controlar se entramos no canal
   const [isJoined, setIsJoined] = useState(false);
 
   const agoraClient = useRTCClient();
 
-  // --- A CORREÇÃO ESTÁ AQUI ---
-  // Os hooks são instruídos a NÃO criar nada (1º argumento é 'false' ou 'isJoined')
-  // até que o 'isJoined' seja true.
-  // Removemos o { publish: false } para deixar a biblioteca publicar automaticamente
-  // assim que as trilhas forem criadas (quando isJoined se tornar true).
-  const { localMicrophoneTrack } = useLocalMicrophoneTrack(isJoined);
-  const { localCameraTrack } = useLocalCameraTrack(isJoined && type === CallType.VIDEO);
+  // 2. Criar mídias, mas SÓ QUANDO 'isJoined' for true
+  // Vamos usar { publish: false } para garantir que NÓS controlamos a publicação
+  const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack(isJoined, { publish: false });
+  const { localCameraTrack, camReady } = useLocalCameraTrack(isJoined && type === CallType.VIDEO, { publish: false });
   
-  // useEffect #1: Lógica de Entrar (Join) e Sair (Leave)
+  // 3. useEffect #1: Lógica de Entrar (Join) e Sair (Leave)
   useEffect(() => {
     let didJoin = false;
 
@@ -91,9 +87,7 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
         .then(() => {
           console.log("useEffect [Join]: SUCESSO. Usuário entrou no canal!");
           didJoin = true;
-          // AGORA ativamos o 'isJoined'.
-          // Isso vai fazer o React rodar de novo e os hooks acima (useLocal...Track)
-          // irão criar e publicar as mídias.
+          // Ativa o 'isJoined'. Isso vai disparar os hooks acima
           setIsJoined(true); 
         })
         .catch(e => console.error("Falha ao entrar no canal:", e));
@@ -102,20 +96,47 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
     // Função de Limpeza
     return () => {
       console.log("useEffect [Join]: Limpeza.");
-      // Quando sairmos (state mudar ou onEndCall), isJoined vira false.
-      // Isso fará os hooks useLocal...Track destruírem e despublicarem as mídias.
       setIsJoined(false);
       if (didJoin) { 
         agoraClient.leave();
         console.log("useEffect [Join]: Saiu do canal.");
       }
     };
-  // Depende APENAS do 'state' e das props de configuração
   }, [state, agoraClient, agoraAppId, channelName, currentUser.id]);
 
-  // *** Os useEffects manuais de Publicação [Mic] e [Cam] foram REMOVIDOS ***
+  // 4. useEffect #2: Lógica de Publicar Microfone
+  // Este hook será disparado DEPOIS que 'isJoined' e 'micReady' forem verdadeiros
+  useEffect(() => {
+    if (isJoined && micReady && localMicrophoneTrack) {
+      console.log("useEffect [Mic]: Publicando microfone...");
+      agoraClient.publish([localMicrophoneTrack])
+        .catch(e => console.error("Falha ao publicar microfone:", e));
+      
+      return () => {
+        console.log("useEffect [Mic]: Removendo microfone...");
+        agoraClient.unpublish([localMicrophoneTrack])
+          .catch(e => console.error("Falha ao remover microfone:", e));
+      };
+    }
+  }, [isJoined, micReady, localMicrophoneTrack, agoraClient]); // Depende de todas estas variáveis
 
-  // useEffect do Timer (agora depende de isJoined)
+  // 5. useEffect #3: Lógica de Publicar Câmera
+  // Este hook será disparado DEPOIS que 'isJoined' e 'camReady' forem verdadeiros
+  useEffect(() => {
+    if (isJoined && camReady && localCameraTrack && type === CallType.VIDEO) {
+      console.log("useEffect [Cam]: Publicando câmera...");
+      agoraClient.publish([localCameraTrack])
+        .catch(e => console.error("Falha ao publicar câmera:", e));
+      
+      return () => {
+        console.log("useEffect [Cam]: Removendo câmera...");
+        agoraClient.unpublish([localCameraTrack])
+          .catch(e => console.error("Falha ao remover câmera:", e));
+      };
+    }
+  }, [isJoined, camReady, localCameraTrack, agoraClient, type]); // Depende de todas estas variáveis
+
+  // 6. useEffect #4: Lógica do Timer
   useEffect(() => {
     let timer: number | undefined;
     if (isJoined) { // O timer só começa quando o join está 100% completo
@@ -151,7 +172,7 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   return (
     <div className="absolute inset-0 bg-gray-800 bg-opacity-90 flex flex-col items-center justify-center z-50 text-white">
       
-      {/* Só renderiza o VideoCall DEPOIS que o join estiver completo (isJoined) */}
+      {/* Só renderize o VideoCall DEPOIS que o join estiver completo (isJoined) */}
       {isJoined && (
         <VideoCall 
           channelName={channelName} 
