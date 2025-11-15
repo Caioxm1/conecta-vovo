@@ -45,7 +45,12 @@ const CameraView: React.FC<CameraModalProps> = ({ onClose, onSendMessage, curren
       console.log("Câmeras disponíveis:", devices);
       setVideoDevices(devices);
       
-      const currentDeviceId = camTrack.getTrack().getSettings().deviceId;
+      // --- CORREÇÃO AQUI ---
+      // Era: camTrack.getTrack().getSettings().deviceId
+      // Correto: camTrack.getMediaStreamTrack().getSettings().deviceId
+      const currentDeviceId = camTrack.getMediaStreamTrack().getSettings().deviceId;
+      // ---------------------
+      
       const currentIndex = devices.findIndex(device => device.deviceId === currentDeviceId);
       if (currentIndex !== -1) {
         setCurrentCamIndex(currentIndex);
@@ -76,7 +81,7 @@ const CameraView: React.FC<CameraModalProps> = ({ onClose, onSendMessage, curren
       }
       setLocalCamTrack(null);
     };
-  }, []); // <-- CORREÇÃO: Removido [onClose], array vazio roda só 1 vez
+  }, []); // Array vazio roda só 1 vez
   // --------------------------------------------------------
 
   // Função para trocar de câmera (lógica do CallManager)
@@ -142,12 +147,7 @@ const CameraView: React.FC<CameraModalProps> = ({ onClose, onSendMessage, curren
   // --- FUNÇÃO "TIRAR OUTRA" CORRIGIDA ---
   const handleRetakePhoto = () => {
     setPhotoDataUrl(null); // Volta para a tela da câmera
-    // Recria a câmera (ela foi fechada no handleTakePhoto)
-    createCamera().then(track => {
-      // O useEffect principal não vai rodar de novo,
-      // então precisamos atualizar a trilha aqui.
-      // A limpeza do useEffect anterior já rodou.
-    });
+    createCamera(); // Recria a câmera
   };
   // ---------------------------------------
 
