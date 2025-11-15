@@ -2,17 +2,20 @@ import React, { useState, useEffect } from 'react';
 import type { User, ActiveCall } from '../types';
 import { CallState, CallType } from '../types';
 
-import AgoraRTC from 'agora-rtc-sdk-ng'; 
+// Importamos o AgoraRTC para usar manualmente
+import AgoraRTC, { 
+  IAgoraRTCRemoteUser, 
+  ICameraVideoTrack, 
+  IMicrophoneAudioTrack 
+} from 'agora-rtc-sdk-ng'; 
+
 import {
   AgoraRTCProvider,
   useRTCClient,
-  useLocalCameraTrack,
-  useLocalMicrophoneTrack,
+  // Removemos useLocalCameraTrack e useLocalMicrophoneTrack
   useRemoteUsers,
   LocalVideoTrack,
   RemoteUser,
-  ICameraVideoTrack,
-  IMicrophoneAudioTrack,
 } from 'agora-rtc-react';
 
 interface CallManagerProps {
@@ -62,88 +65,95 @@ const VideoCall: React.FC<{
   );
 };
 
-// Componente Principal (LÓGICA DE PUBLICAÇÃO SEPARADA)
+// Componente Principal (VERSÃO TOTALMENTE MANUAL)
 const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall, currentUser, agoraAppId }) => {
   const { state, type, withUser, channelName } = call;
   const [callDuration, setCallDuration] = useState(0);
-  
-  // 1. Estado para controlar se entramos no canal
   const [isJoined, setIsJoined] = useState(false);
-
+  
+  // Vamos armazenar nossas trilhas (tracks) locais no estado do React
+  const [localMicTrack, setLocalMicTrack] = useState<IMicrophoneAudioTrack | null>(null);
+  const [localCamTrack, setLocalCamTrack] = useState<ICameraVideoTrack | null>(null);
+  
   const agoraClient = useRTCClient();
 
-  // 2. Criar mídias, SÓ QUANDO 'isJoined' for true, e com { publish: false }
-  const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack(isJoined, { publish: false });
-  const { localCameraTrack, camReady } = useLocalCameraTrack(isJoined && type === CallType.VIDEO, { publish: false });
-  
-  // 3. useEffect #1: Lógica de Entrar (Join) e Sair (Leave)
+  // --- LÓGICA MANUAL DE JOIN E PUBLISH ---
   useEffect(() => {
-    // Log de diagnóstico para confirmar o App ID
-    console.log("APP ID EM USO:", agoraAppId);
-    
+    // Variáveis para guardar as trilhas criadas
+    let micTrack: IMicrophoneAudioTrack | null = null;
+    let camTrack: ICameraVideoTrack | null = null;
     let didJoin = false;
 
-    if (state === CallState.ACTIVE) {
-      console.log("useEffect [Join]: Estado é ATIVO. Tentando entrar...");
-      agoraClient.join(agoraAppId, channelName, null, currentUser.id)
-        .then(() => {
-          console.log("useEffect [Join]: SUCESSO. Usuário entrou no canal!");
-          didJoin = true;
-          // Ativa o 'isJoined'. Isso vai disparar os hooks acima.
-          setIsJoined(true); 
-        })
-        .catch(e => console.error("Falha ao entrar no canal:", e));
-    }
-    
-    // Função de Limpeza
-    return () => {
-      console.log("useEffect [Join]: Limpeza.");
-      setIsJoined(false); // Isso vai desativar e despublicar os hooks acima
-      if (didJoin) { 
-        agoraClient.leave();
-        console.log("useEffect [Join]: Saiu do canal.");
+    const joinAndPublish = async () => {
+      try {
+        console.log("useEffect [Join]: Estado é ATIVO. Tentando entrar...");
+        await agoraClient.join(agoraAppId, channelName, null, currentUser.id);
+        didJoin = true;
+        console.log("useEffect [Join]: SUCESSO. Usuário entrou no canal!");
+        
+        // Agora que entramos, vamos criar e publicar as mídias
+        
+        // 1. Criar Microfone
+        console.log("useEffect [Mic]: Criando microfone...");
+        micTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        setLocalMicTrack(micTrack); // Salva no estado para o VideoCall usar
+        
+        // 2. Criar Câmera (se for video)
+        if (type === CallType.VIDEO) {
+          console.log("useEffect [Cam]: Criando câmera...");
+          camTrack = await AgoraRTC.createCameraVideoTrack();
+          setLocalCamTrack(camTrack); // Salva no estado para o VideoCall usar
+        }
+
+        // 3. Publicar TUDO de uma vez
+        const tracksToPublish: (IMicrophoneAudioTrack | ICameraVideoTrack)[] = [];
+        if (micTrack) tracksToPublish.push(micTrack);
+        if (camTrack) tracksToPublish.push(camTrack);
+        
+        if (tracksToPublish.length > 0) {
+          console.log("useEffect [Publish]: Publicando trilhas...", tracksToPublish);
+          await agoraClient.publish(tracksToPublish);
+          console.log("useEffect [Publish]: TRILHAS PUBLICADAS COM SUCESSO!");
+        }
+        
+        setIsJoined(true); // Só define como "pronto" depois de tudo
+
+      } catch (e) {
+        console.error("ERRO CRÍTICO no join/publish:", e);
       }
     };
-  }, [state, agoraClient, agoraAppId, channelName, currentUser.id]);
 
-  // --- CORREÇÃO FINAL ESTÁ AQUI ---
-  // 4. useEffect #2: Lógica de PUBLICAR o Microfone
-  //    Este hook é SEPARADO. Ele só se preocupa com o microfone.
-  useEffect(() => {
-    // Se a trilha está pronta E AINDA não foi publicada...
-    if (micReady && localMicrophoneTrack) {
-       console.log("useEffect [Mic]: Microfone está pronto. Publicando...");
-       agoraClient.publish([localMicrophoneTrack])
-         .then(() => console.log("useEffect [Mic]: Microfone PUBLICADO!"))
-         .catch(e => console.error("Falha ao publicar microfone:", e));
-       
-       // A limpeza aqui é SÓ despublicar
-       return () => {
-         console.log("useEffect [Mic]: Limpeza - removendo microfone.");
-         agoraClient.unpublish([localMicrophoneTrack]).catch(e => console.error("Falha ao remover mic:", e));
-       };
+    if (state === CallState.ACTIVE) {
+      joinAndPublish();
     }
-  }, [micReady, localMicrophoneTrack, agoraClient]); // Dispara QUANDO o mic ficar pronto
+    
+    // Função de Limpeza (executa quando a chamada termina)
+    return () => {
+      console.log("useEffect [Join]: Limpeza.");
+      setIsJoined(false);
+      
+      // Para o mic e a câmera
+      if (micTrack) {
+        micTrack.stop();
+        micTrack.close();
+      }
+      if (camTrack) {
+        camTrack.stop();
+        camTrack.close();
+      }
+      setLocalMicTrack(null);
+      setLocalCamTrack(null);
+      
+      // Sai do canal
+      if (didJoin) { 
+        agoraClient.unpublish(); // Remove todas as publicações
+        agoraClient.leave();
+        console.log("useEffect [Join]: Saiu do canal e limpou mídias.");
+      }
+    };
+  }, [state, agoraClient, agoraAppId, channelName, currentUser.id, type]); // Adicionado 'type'
 
-  // 5. useEffect #3: Lógica de PUBLICAR a Câmera
-  //    Este hook é SEPARADO. Ele só se preocupa com a câmera.
-  useEffect(() => {
-    // Se a trilha está pronta E AINDA não foi publicada...
-    if (camReady && localCameraTrack) {
-       console.log("useEffect [Cam]: Câmera está pronta. Publicando...");
-       agoraClient.publish([localCameraTrack])
-         .then(() => console.log("useEffect [Cam]: Câmera PUBLICADA!"))
-         .catch(e => console.error("Falha ao publicar câmera:", e));
-       
-       // A limpeza aqui é SÓ despublicar
-       return () => {
-         console.log("useEffect [Cam]: Limpeza - removendo câmera.");
-         agoraClient.unpublish([localCameraTrack]).catch(e => console.error("Falha ao remover cam:", e));
-       };
-    }
-  }, [camReady, localCameraTrack, agoraClient]); // Dispara QUANDO a câmera ficar pronta
-
-  // 6. useEffect #4: Lógica do Timer
+  // useEffect do Timer (Sem mudanças)
   useEffect(() => {
     let timer: number | undefined;
     if (isJoined) {
@@ -177,12 +187,13 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   return (
     <div className="absolute inset-0 bg-gray-800 bg-opacity-90 flex flex-col items-center justify-center z-50 text-white">
       
+      {/* Renderiza o VideoCall. Agora ele depende das trilhas no estado. */}
       {isJoined && (
         <VideoCall 
           channelName={channelName} 
           callType={type}
-          localMicTrack={localMicrophoneTrack}
-          localCamTrack={localCameraTrack}
+          localMicTrack={localMicTrack}
+          localCamTrack={localCamTrack}
         />
       )}
       
