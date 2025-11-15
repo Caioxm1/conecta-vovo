@@ -1,9 +1,10 @@
 export interface User {
-  id: string; // MUDADO DE 'number' PARA 'string'
+  id: string;
   name: string;
   avatar: string;
   relationship: string;
   status: 'online' | 'offline';
+  isAdmin?: boolean; // <-- ARQUIVO ATUALIZADO AQUI
 }
 
 export enum MessageType {
@@ -15,17 +16,16 @@ export enum MessageType {
 }
 
 export interface Message {
-  id: string; // MUDADO DE 'number' PARA 'string'
-  senderId: string; // MUDADO DE 'number' PARA 'string'
-  receiverId: string; // MUDADO DE 'number' PARA 'string'
+  id: string;
+  senderId: string;
+  receiverId: string;
   type: MessageType;
   content: string; 
   timestamp: string;
   duration?: number;
-  isRead: boolean; // <-- ARQUIVO ATUALIZADO AQUI
+  isRead: boolean;
 }
 
-// O resto (CallState, CallType, ActiveCall) pode continuar igual
 export enum CallState {
   NONE,
   OUTGOING,
@@ -42,7 +42,6 @@ export interface ActiveCall {
   state: CallState;
   type: CallType;
   withUser: User;
-  // Adicionados docId e channelName que faltavam
   docId?: string;
   channelName?: string;
 }

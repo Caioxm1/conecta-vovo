@@ -4,7 +4,7 @@ import { auth, db } from './firebase';
 import { 
   doc, setDoc, serverTimestamp, collection, addDoc, getDoc,
   onSnapshot, 
-  updateDoc, // <--- ADICIONADO
+  updateDoc,
   deleteDoc,
   where,
   query
@@ -17,18 +17,8 @@ import ChatWindow from './components/ChatWindow';
 import type { User, Message, ActiveCall } from './types';
 import { MessageType, CallState, CallType } from './types';
 
-// Pega o App ID do Agora do arquivo .env
 const AGORA_APP_ID = process.env.AGORA_APP_ID || "";
-
-// Lazy Load do CallManager (para performance)
 const CallManager = lazy(() => import('./components/CallManager'));
-
-// A função 'showNotification'
-const showNotification = (title: string, options: NotificationOptions) => {
-    if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(title, options);
-    }
-}
 
 function App() {
   const [userAuth, loadingAuth] = useAuthState(auth); 
@@ -37,56 +27,56 @@ function App() {
   const [chatWithUser, setChatWithUser] = useState<User | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
 
-  // useEffect que cuida do login e perfil (continua igual)
+  // --- useEffect DE LOGIN MODIFICADO ---
   useEffect(() => {
     if (userAuth) {
-      const user: User = {
-        id: userAuth.uid,
-        name: userAuth.displayName || "Usuário",
-        avatar: userAuth.photoURL || `https://picsum.photos/seed/${userAuth.uid}/200`,
-        relationship: 'Família', 
-        status: 'online',
-      };
-      setCurrentUser(user);
-      
+      // Usuário logou no Google. Ele está APROVADO?
       const userRef = doc(db, 'users', userAuth.uid);
-      setDoc(userRef, { lastSeen: serverTimestamp(), status: 'online' }, { merge: true });
-
-      requestPermissionAndSaveToken(userAuth.uid);
+      
+      getDoc(userRef).then(userSnap => {
+        if (userSnap.exists()) {
+          // 1. SIM, APROVADO! Carrega o perfil.
+          const userData = userSnap.data() as User;
+          setCurrentUser(userData);
+          
+          // Atualiza o status para "online"
+          setDoc(userRef, { lastSeen: serverTimestamp(), status: 'online' }, { merge: true });
+          
+          // Pede token de notificação
+          requestPermissionAndSaveToken(userAuth.uid);
+          
+        } else {
+          // 2. NÃO APROVADO (Pendente ou novo)
+          console.log("Usuário não aprovado tentou logar:", userAuth.displayName);
+          setCurrentUser(null); // Mantém ele na LoginScreen
+          
+          // (Opcional) Podemos deslogá-lo para forçar a tela de "Aguarde" do LoginScreen
+          // auth.signOut();
+        }
+      });
+      
     } else {
+      // Usuário deslogou
       setCurrentUser(null);
     }
-  }, [userAuth]);
+  }, [userAuth]); // Roda sempre que o estado de auth do Google mudar
+  // ----------------------------------------
 
-  // useEffect' para ler a URL (Deep Link) (código antigo removido)
+  // useEffect (Deep Link de Notificação de Chamada)
   useEffect(() => {
-    // ... (código do 'chatWith' na URL - removido para clareza)
-  }, [currentUser, chatWithUser]); 
-
-  // --- NOVO: useEffect para ler Deep Link de Notificação de Chamada ---
-  useEffect(() => {
-    if (!currentUser) return; // Precisa do usuário logado
-
+    if (!currentUser) return;
     const params = new URLSearchParams(window.location.search);
     const action = params.get('action');
     const callDocId = params.get('callDocId');
-    
-    // Se a ação for "aceitar" e não estivermos em chamada
     if (action === 'accept_call' && callDocId && !activeCall) { 
       console.log("Abrindo chamada vinda de notificação:", callDocId);
-      
-      // 1. Buscar os dados da chamada
       const callRef = doc(db, "calls", callDocId);
       getDoc(callRef).then(callDoc => {
         if (callDoc.exists()) {
           const callData = callDoc.data();
-          
-          // 2. Buscar os dados de quem ligou
           getDoc(doc(db, "users", callData.callerId)).then(userDoc => {
             if (userDoc.exists()) {
               const callerData = userDoc.data() as User;
-              
-              // 3. FORÇAR o estado de chamada para 'INCOMING'
               setActiveCall({
                 state: CallState.INCOMING,
                 type: callData.type,
@@ -94,18 +84,15 @@ function App() {
                 channelName: callData.channelName,
                 docId: callDoc.id,
               });
-              
-              // 4. Limpa a URL
               window.history.replaceState({}, document.title, "/");
             }
           });
         }
       });
     }
-  }, [currentUser, activeCall]); // Roda quando o usuário é carregado
-  // -------------------------------------------------------------
+  }, [currentUser, activeCall]);
 
-  // useEffect: OUVINTE DE CHAMADAS 'INCOMING' (continua igual)
+  // useEffect: OUVINTE DE CHAMADAS 'INCOMING' (sem mudanças)
   useEffect(() => {
     if (!currentUser) return;
     const callsRef = collection(db, "calls");
@@ -119,11 +106,11 @@ function App() {
         const callData = callDoc.data();
         getDoc(doc(db, "users", callData.callerId)).then(userDoc => {
           if (userDoc.exists()) {
-            const callerData = userDoc.data() as User; // Convertido para User
+            const callerData = userDoc.data() as User;
             setActiveCall({
               state: CallState.INCOMING,
               type: callData.type,
-              withUser: callerData, // Passa o objeto User completo
+              withUser: callerData,
               channelName: callData.channelName,
               docId: callDoc.id,
             });
@@ -134,8 +121,7 @@ function App() {
     return () => unsubscribe();
   }, [currentUser]);
 
-
-  // useEffect: OUVINTE DO ESTADO DA CHAMADA ATIVA (continua igual)
+  // useEffect: OUVINTE DO ESTADO DA CHAMADA ATIVA (sem mudanças)
   useEffect(() => {
     if (!activeCall || !activeCall.docId) return;
     const callRef = doc(db, "calls", activeCall.docId);
@@ -154,6 +140,7 @@ function App() {
     return () => unsubscribe();
   }, [activeCall?.docId, activeCall?.state]);
 
+  // handleLogout (sem mudanças)
   const handleLogout = () => {
     if (currentUser) {
       const userRef = doc(db, 'users', currentUser.id);
@@ -164,11 +151,12 @@ function App() {
     setChatWithUser(null);
   };
 
+  // handleSelectUser (sem mudanças)
   const handleSelectUser = (user: User) => {
     setChatWithUser(user);
   };
 
-  // handleSendMessage (continua igual)
+  // handleSendMessage (sem mudanças)
   const handleSendMessage = async (type: MessageType, content: string, duration?: number) => {
     if (!currentUser || !chatWithUser) return;
     const chatId = currentUser.id > chatWithUser.id 
@@ -190,13 +178,11 @@ function App() {
     }
   };
   
-  // --- handleStartCall (MODIFICADO) ---
+  // handleStartCall (sem mudanças)
   const handleStartCall = async (type: 'audio' | 'video') => {
     if (!currentUser || !chatWithUser) return;
     const channelName = `call_${currentUser.id}_${chatWithUser.id}`;
     const callsRef = collection(db, "calls");
-    
-    // 1. Cria o documento da chamada
     const callDocRef = await addDoc(callsRef, {
       callerId: currentUser.id,
       receiverId: chatWithUser.id,
@@ -205,24 +191,19 @@ function App() {
       status: "ringing",
       createdAt: serverTimestamp(),
     });
-
-    // 2. NOVO: Atualiza o documento com seu próprio ID
-    //    Isso é crucial para a Cloud Function encontrar o docId
     await updateDoc(callDocRef, {
       docId: callDocRef.id
     });
-
-    // 3. Define a chamada ativa localmente
     setActiveCall({
       state: CallState.OUTGOING,
       type: type === 'audio' ? CallType.AUDIO : CallType.VIDEO,
       withUser: chatWithUser,
       channelName: channelName,
-      docId: callDocRef.id, // Usa o ID do documento
+      docId: callDocRef.id,
     });
   };
   
-  // handleAcceptCall (continua igual)
+  // handleAcceptCall (sem mudanças)
   const handleAcceptCall = async () => {
     if (!activeCall || !activeCall.docId) return;
     const callRef = doc(db, "calls", activeCall.docId);
@@ -232,7 +213,7 @@ function App() {
     setActiveCall(prev => prev ? { ...prev, state: CallState.ACTIVE } : null);
   };
   
-  // handleEndCall (continua igual)
+  // handleEndCall (sem mudanças)
   const handleEndCall = async () => {
     if (!activeCall || !activeCall.docId) return;
     const callRef = doc(db, "calls", activeCall.docId);
@@ -244,17 +225,19 @@ function App() {
     setActiveCall(null);
   };
 
+  // --- RENDERIZAÇÃO (MODIFICADA) ---
   if (loadingAuth) {
     return <div className="flex h-screen items-center justify-center">Carregando...</div>;
   }
 
+  // Se o usuário não está logado OU não foi aprovado, mostra LoginScreen
   if (!currentUser) {
     return <LoginScreen />;
   }
+  // --------------------------------
 
   return (
     <div className="h-dvh w-screen font-sans overflow-hidden">
-        {/* Suspense para o CallManager (continua igual) */}
         {activeCall && currentUser && (
           <Suspense fallback={<div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 text-white text-2xl">Carregando chamada...</div>}>
             <CallManager 
@@ -267,7 +250,7 @@ function App() {
           </Suspense>
         )}
 
-        {/* --- LAYOUT PARA CELULAR --- (continua igual) */}
+        {/* --- LAYOUT PARA CELULAR --- */}
         <div className="h-full w-full md:hidden">
             {!chatWithUser ? (
                 <FamilyList
@@ -286,7 +269,7 @@ function App() {
             )}
         </div>
 
-        {/* --- LAYTAOUT PARA DESKTOP --- (continua igual) */}
+        {/* --- LAYTAOUT PARA DESKTOP --- */}
         <div className="hidden md:flex h-full w-full">
             <div className="w-auto">
                 <FamilyList

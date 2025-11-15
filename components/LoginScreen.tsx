@@ -1,9 +1,8 @@
 import React from 'react';
 import { auth, googleProvider, db } from '../firebase'; // Importamos o Firebase
 import { signInWithPopup } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore'; // serverTimestamp importado
 
-// As props 'users' e 'onLogin' não são mais necessárias
 const LoginScreen: React.FC = () => {
   
   const handleGoogleLogin = async () => {
@@ -12,22 +11,33 @@ const LoginScreen: React.FC = () => {
       const user = result.user;
 
       if (user) {
-        // Salva ou atualiza o usuário no banco de dados Firestore
-        // Isso é importante para que outros usuários possam encontrá-lo
-        const userRef = doc(db, 'users', user.uid);
-        await setDoc(userRef, {
+        // --- LÓGICA DE LOGIN MODIFICADA ---
+        
+        // 1. Salva o novo usuário na "sala de espera" (pendingUsers) para aprovação
+        const pendingUserRef = doc(db, 'pendingUsers', user.uid);
+        await setDoc(pendingUserRef, {
           id: user.uid,
           name: user.displayName || 'Usuário',
           avatar: user.photoURL || `https://picsum.photos/seed/${user.uid}/200`,
-          relationship: 'Família', // Você pode criar uma tela para definir isso depois
-          status: 'online',
-          lastSeen: serverTimestamp(),
-        }, { merge: true }); // 'merge: true' garante que não vamos sobrescrever dados
+          email: user.email, // Salva o email para o Admin saber quem é
+          status: 'pending',
+          requestedAt: serverTimestamp(),
+        }, { merge: true }); // 'merge: true' caso ele tente logar de novo
+
+        // 2. Avisa o usuário que ele precisa esperar
+        alert("Obrigado por se registrar!\n\nSeu acesso precisa ser aprovado por um administrador. Por favor, aguarde e tente novamente mais tarde.");
+        
+        // 3. Desloga o usuário até ele ser aprovado
+        auth.signOut();
       }
-      // O App.tsx vai detectar o login automaticamente, não precisamos chamar 'onLogin'
+      
     } catch (error) {
       console.error("Erro ao fazer login com Google:", error);
-      alert("Houve um erro ao tentar fazer login. Tente novamente.");
+      
+      // Se o erro for de "usuário não aprovado" (que vamos forçar), não mostra
+      if (error.code !== "auth/user-not-found") { // Exemplo, pode ser outro
+         alert("Houve um erro ao tentar fazer login. Tente novamente.");
+      }
     }
   };
 
@@ -41,7 +51,6 @@ const LoginScreen: React.FC = () => {
         <h2 className="text-3xl font-semibold text-center text-gray-700 mb-8">Quem está usando?</h2>
         <div className="space-y-4">
           
-          {/* Trocamos a lista de usuários por um botão de login */}
           <button
             key="google-login"
             onClick={handleGoogleLogin}

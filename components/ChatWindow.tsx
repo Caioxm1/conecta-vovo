@@ -1,6 +1,10 @@
 import React, { useRef, useEffect } from 'react';
 import { useCollection } from 'react-firebase-hooks/firestore';
-import { collection, query, orderBy, Timestamp, getDocs, writeBatch, where } from 'firebase/firestore'; 
+// Imports atualizados
+import { 
+  collection, query, orderBy, Timestamp, getDocs, 
+  writeBatch, where, doc, updateDoc 
+} from 'firebase/firestore'; 
 import { db } from '../firebase';
 
 import type { User, Message } from '../types';
@@ -15,7 +19,7 @@ interface ChatWindowProps {
   onGoBack: () => void;
 }
 
-// --- COMPONENTE DE ÍCONE ATUALIZADO ---
+// --- ÍCONE DE STATUS (Preto e Vermelho) ---
 const MessageStatusIcon: React.FC<{ isRead: boolean }> = ({ isRead }) => {
   // 2 pontos VERMELHOS se isRead for true
   if (isRead) {
@@ -37,7 +41,7 @@ const MessageStatusIcon: React.FC<{ isRead: boolean }> = ({ isRead }) => {
 // ---------------------------------
 
 
-// O componente MessageBubble (MODIFICADO)
+// O componente MessageBubble
 const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender: User; }> = ({ message, isCurrentUser, sender }) => {
   const alignment = isCurrentUser ? 'justify-end' : 'justify-start';
   const colors = isCurrentUser ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-800';
@@ -84,17 +88,14 @@ const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender
         <div className={`p-4 rounded-2xl max-w-lg ${colors} ${isCurrentUser ? 'rounded-br-none' : 'rounded-bl-none'}`}>
           {renderContent()}
           
-          {/* --- MODIFICAÇÃO AQUI --- */}
           <div className="flex items-center justify-end space-x-1 mt-2">
             <span className={`text-xs ${isCurrentUser ? 'text-green-200' : 'text-gray-500'}`}>
               {formatTimestamp(message.timestamp)}
             </span>
-            {/* Mostra o ícone de status APENAS para as mensagens do usuário atual */}
             {isCurrentUser && (
               <MessageStatusIcon isRead={message.isRead} />
             )}
           </div>
-          {/* ------------------------- */}
         </div>
         {isCurrentUser && <img src={sender.avatar} alt={sender.name} className="w-10 h-10 rounded-full" />}
     </div>
@@ -117,13 +118,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
   // Converte o snapshot para o nosso tipo Message
   const messages: Message[] = messagesSnapshot?.docs.map(doc => {
     const data = doc.data();
-    // Converte o Timestamp do Firestore para string ISO
     const timestamp = (data.timestamp as Timestamp)?.toDate().toISOString(); 
     return {
       id: doc.id,
       ...data,
       timestamp: timestamp,
-      // Garante que isRead exista (se não vier do firestore, é false)
       isRead: data.isRead || false, 
     } as Message;
   }) || [];
@@ -132,45 +131,51 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  useEffect(scrollToBottom, [messages]); // Rola para baixo quando as mensagens mudam
+  useEffect(scrollToBottom, [messages]);
 
-  // --- useEffect PARA MARCAR COMO LIDO (MODIFICADO) ---
+  // useEffect PARA MARCAR COMO LIDO
   useEffect(() => {
-    // Função assíncrona para marcar mensagens como lidas
     const markMessagesAsRead = async () => {
-      // 1. Encontra todas as mensagens NÃO LIDAS que foram ENVIADAS PARA MIM
       const unreadQuery = query(messagesRef,
         where('receiverId', '==', currentUser.id),
         where('isRead', '==', false)
       );
-
       const querySnapshot = await getDocs(unreadQuery);
-      
-      // Se não há mensagens não lidas, não faz nada
       if (querySnapshot.empty) {
         return;
       }
-
-      // 2. Cria um "batch" (lote) para atualizar todas de uma vez
       const batch = writeBatch(db);
       querySnapshot.docs.forEach(doc => {
         batch.update(doc.ref, { isRead: true });
       });
-
-      // 3. "Comita" (envia) a atualização para o Firestore
       await batch.commit();
       console.log('Mensagens marcadas como lidas!');
     };
-
-    // Roda a função assim que o chat for aberto
     markMessagesAsRead();
-
-    // Roda de novo se o chatWithUser mudar ou novas mensagens chegarem
   }, [currentUser.id, chatWithUser.id, messagesRef, messagesSnapshot]);
-  // ---------------------------------------------
+  
+
+  // --- FUNÇÃO PARA EDITAR PARENTESCO ---
+  const handleEditRelationship = async (userToEdit: User) => {
+    const newRelationship = prompt("Qual o grau de parentesco?", userToEdit.relationship);
+    
+    if (newRelationship && newRelationship.trim() !== "") {
+      try {
+        const userRef = doc(db, 'users', userToEdit.id);
+        await updateDoc(userRef, {
+          relationship: newRelationship
+        });
+      } catch (error) {
+        console.error("Erro ao atualizar parentesco: ", error);
+        alert("Não foi possível atualizar o parentesco.");
+      }
+    }
+  };
+  // -------------------------------------------
 
   return (
     <div className="flex flex-col h-dvh bg-gray-50 w-full">
+      {/* --- CABEÇALHO MODIFICADO --- */}
       <header className="flex items-center p-4 bg-white shadow-md z-10">
         <button onClick={onGoBack} className="p-2 rounded-full hover:bg-gray-200 mr-4">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -178,13 +183,27 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
           </svg>
         </button>
         <img src={chatWithUser.avatar} alt={chatWithUser.name} className="w-14 h-14 rounded-full mr-4" />
+        
+        {/* Nome e Parentesco (com botão de editar) */}
         <div>
             <h2 className="text-2xl font-bold text-gray-800">{chatWithUser.name}</h2>
-            <p className="text-gray-500">{chatWithUser.relationship}</p>
+            
+            <div className="flex items-center group">
+                <p className="text-gray-500">{chatWithUser.relationship}</p>
+                {/* Botão de lápis para editar */}
+                <button 
+                    onClick={() => handleEditRelationship(chatWithUser)}
+                    className="ml-2 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-black transition-all"
+                    title="Editar parentesco"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" /></svg>
+                </button>
+            </div>
         </div>
+        {/* ------------------------------------- */}
+        
         <div className="flex-grow"></div>
         <div className="flex items-center space-x-2">
-            {/* Botões de chamada desabilitados por enquanto */}
             <button onClick={() => onStartCall('audio')} className="p-3 rounded-full hover:bg-green-100 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
             </button>
