@@ -124,31 +124,37 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
         <div className="flex items-center justify-between w-full">
             <div className="flex items-center">
                 <div className="w-4 h-4 rounded-full bg-red-500 animate-pulse mr-3"></div>
-                <span className="text-xl font-mono text-gray-700">{formatTime(recordingTime)}</span>
+                {/* TAMANHO DO TEXTO REDUZIDO */}
+                <span className="text-lg font-mono text-gray-700">{formatTime(recordingTime)}</span>
             </div>
-          <button onClick={handleToggleRecording} className="p-4 rounded-full bg-green-500 text-white hover:bg-green-600 transition-colors">
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 20 20" fill="currentColor">
+          {/* PADDING E ÍCONE REDUZIDOS */}
+          <button onClick={handleToggleRecording} className="p-3 rounded-full bg-green-500 text-white hover:bg-green-600 transition-colors">
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M4.555 5.168A1 1 0 003 6v8a1 1 0 001.555.832L10 11.664V14a1 1 0 001 1h2a1 1 0 001-1V6a1 1 0 00-1-1h-2a1 1 0 00-1 1v2.336L4.555 5.168z" />
              </svg>
           </button>
         </div>
       ) : (
-        <div className="flex items-center space-x-4">
+        /* ESPAÇAMENTO REDUZIDO */
+        <div className="flex items-center space-x-2">
+          {/* PADDING E TEXTO REDUZIDOS */}
           <input
             type="text"
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSendText()}
             placeholder="Digite uma mensagem..."
-            className="flex-grow p-4 text-xl border-2 border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="flex-grow p-3 text-lg border-2 border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500"
           />
-          <button onClick={handleToggleRecording} className="p-4 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          {/* PADDING E ÍCONE REDUZIDOS */}
+          <button onClick={handleToggleRecording} className="p-3 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
           </button>
-          <button onClick={handleSendText} className="p-4 rounded-full bg-green-500 text-white hover:bg-green-600 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          {/* PADDING E ÍCONE REDUZIDOS */}
+          <button onClick={handleSendText} className="p-3 rounded-full bg-green-500 text-white hover:bg-green-600 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </button>
