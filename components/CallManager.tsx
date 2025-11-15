@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { User, ActiveCall } from '../types';
 import { CallState, CallType } from '../types';
 
-// Importamos o SDK principal 'AgoraRTC'
 import AgoraRTC from 'agora-rtc-sdk-ng'; 
-// E mantemos os 'hooks' e 'componentes' do pacote React
 import {
   AgoraRTCProvider,
   useRTCClient,
@@ -25,9 +23,9 @@ interface CallManagerProps {
   agoraAppId: string;
 }
 
-// O 'agoraClient' foi REMOVIDO daqui.
+const agoraClient = AgoraRTC.createClient({ codec: "vp8", mode: "rtc" });
 
-// Sub-componente que gerencia a lógica da chamada ATIVA
+// Sub-componente que gerencia a lógica da chamada ATIVA (Sem mudanças)
 const VideoCall: React.FC<{ 
   channelName: string; 
   callType: CallType;
@@ -41,7 +39,12 @@ const VideoCall: React.FC<{
       {/* Câmera do Outro Usuário (ocupa a tela inteira) */}
       {remoteUsers.map((user) => (
         <div key={user.uid} className="bg-black rounded-lg overflow-hidden col-span-2 row-span-2">
-          <RemoteUser user={user} playVideo={callType === CallType.VIDEO} playAudio={true} className="w-full h-full object-cover" />
+          <RemoteUser 
+            user={user} 
+            playVideo={callType === CallType.VIDEO} 
+            playAudio={true} 
+            className="w-full h-full object-cover" 
+          />
         </div>
       ))}
       
@@ -66,46 +69,72 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   const { state, type, withUser, channelName } = call;
   const [callDuration, setCallDuration] = useState(0);
 
-  // Hooks do Agora para câmera e microfone
-  const { micTrack, localMicrophoneTrack } = useLocalMicrophoneTrack();
-  const { camTrack, localCameraTrack } = useLocalCameraTrack();
+  // --- MUDANÇA AQUI ---
+  // Pegamos o 'micReady' e 'camReady' para saber quando os dispositivos estão prontos
+  const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack();
+  const { localCameraTrack, camReady } = useLocalCameraTrack();
   
-  // Cliente Agora (para entrar e sair do canal)
   const agoraClient = useRTCClient();
 
+  // --- useEffect SEPARADO #1: Entrar e Sair do Canal ---
   useEffect(() => {
-    let timer: number | undefined;
     if (state === CallState.ACTIVE) {
       // Entra no canal do Agora
       agoraClient.join(agoraAppId, channelName, null, currentUser.id);
+    }
 
-      // Publica (envia) seu áudio e vídeo
-      if (localMicrophoneTrack) {
+    // Função de limpeza (quando a chamada termina ou o estado muda)
+    return () => {
+      if (state === CallState.ACTIVE) {
+        agoraClient.leave();
+      }
+    };
+    // Depende APENAS do estado da chamada e das informações do canal
+  }, [state, agoraClient, agoraAppId, channelName, currentUser.id]);
+
+  // --- useEffect SEPARADO #2: Publicar (enviar) Mídia ---
+  useEffect(() => {
+    // Só publica se a chamada estiver ATIVA
+    if (state === CallState.ACTIVE && agoraClient) {
+      
+      // Publica o microfone ASSIM QUE ele estiver pronto
+      if (micReady && localMicrophoneTrack) {
         localMicrophoneTrack.setEnabled(true);
         agoraClient.publish([localMicrophoneTrack]);
       }
-      if (localCameraTrack && type === CallType.VIDEO) {
+      
+      // Publica a câmera ASSIM QUE ela estiver pronta (se for vídeo)
+      if (camReady && localCameraTrack && type === CallType.VIDEO) {
         localCameraTrack.setEnabled(true);
         agoraClient.publish([localCameraTrack]);
       }
+    }
 
-      // Inicia o timer de duração
+    // Função de limpeza para os tracks
+    return () => {
+      if (localMicrophoneTrack) {
+        localMicrophoneTrack.setEnabled(false);
+      }
+      if (localCameraTrack) {
+        localCameraTrack.setEnabled(false);
+      }
+    };
+    // Depende do estado E da prontidão dos tracks (micReady, camReady)
+  }, [state, agoraClient, micReady, localMicrophoneTrack, camReady, localCameraTrack, type]);
+
+  // --- useEffect SEPARADO #3: Timer da Chamada ---
+  useEffect(() => {
+    let timer: number | undefined;
+    if (state === CallState.ACTIVE) {
       timer = window.setInterval(() => {
         setCallDuration(prev => prev + 1);
       }, 1000);
     }
+    return () => clearInterval(timer);
+  }, [state]); // Depende APENAS do estado
 
-    // Função de limpeza (quando a chamada termina)
-    return () => {
-      clearInterval(timer);
-      if (state === CallState.ACTIVE) {
-        localMicrophoneTrack?.setEnabled(false);
-        localCameraTrack?.setEnabled(false);
-        agoraClient.leave();
-      }
-    };
-  }, [state, agoraClient, agoraAppId, channelName, currentUser.id, localMicrophoneTrack, localCameraTrack, type]);
-
+  
+  // O resto do componente (formatDuration, getCallStatusText, e o JSX) continua 100% igual
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
     const secs = (seconds % 60).toString().padStart(2, '0');
@@ -128,7 +157,6 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   return (
     <div className="absolute inset-0 bg-gray-800 bg-opacity-90 flex flex-col items-center justify-center z-50 text-white">
       
-      {/* Renderiza o vídeo se a chamada estiver ATIVA */}
       {state === CallState.ACTIVE && (
         <VideoCall 
           channelName={channelName} 
@@ -139,36 +167,30 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
       )}
       
       <div className="relative z-10 flex flex-col items-center justify-between h-full w-full p-8">
-        {/* Informações da Chamada (Nome e Status) */}
         <div className="text-center">
             <h2 className="text-5xl font-bold mt-8">{withUser.name}</h2>
             <p className="text-2xl mt-4 opacity-80">{getCallStatusText()}</p>
         </div>
 
-        {/* Avatar (mostrado apenas se não for chamada de vídeo) */}
         {type === CallType.AUDIO && state !== CallState.ACTIVE && (
             <div className="flex flex-col items-center">
                 <img src={withUser.avatar} alt={withUser.name} className="w-48 h-48 rounded-full border-8 border-white shadow-2xl mb-4" />
             </div>
         )}
         
-        {/* Botões de Ação */}
         <div className="flex items-center space-x-8">
             {state === CallState.INCOMING ? (
                  <>
-                    {/* Botão Recusar */}
                     <button onClick={onEndCall} className="flex flex-col items-center justify-center bg-red-500 text-white w-24 h-24 rounded-full hover:bg-red-600 transition-transform transform hover:scale-110">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2 2m-2-2v10a2 2 0 01-2 2H8a2 2 0 01-2-2V6a2 2 0 012-2h2" /></svg>
                         <span className="mt-1 text-sm font-semibold">Recusar</span>
                     </button>
-                    {/* Botão Aceitar */}
                     <button onClick={onAcceptCall} className="flex flex-col items-center justify-center bg-green-500 text-white w-24 h-24 rounded-full hover:bg-green-600 transition-transform transform hover:scale-110">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
                         <span className="mt-1 text-sm font-semibold">Aceitar</span>
                     </button>
                  </>
             ) : (
-                /* Botão Desligar (para chamadas ATIVAS ou SAINDO) */
                 <button onClick={onEndCall} className="flex flex-col items-center justify-center bg-red-500 text-white w-24 h-24 rounded-full hover:bg-red-600 transition-transform transform hover:scale-110">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2 2m-2-2v10a2 2 0 01-2 2H8a2 2 0 01-2-2V6a2 2 0 012-2h2" /></svg>
                     <span className="mt-1 text-sm font-semibold">Desligar</span>
@@ -181,15 +203,11 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
 };
 
 
-// Componente "Pai" que fornece o Cliente Agora
+// Componente "Pai" que fornece o Cliente Agora (Sem mudanças)
 const AgoraWrapper: React.FC<CallManagerProps> = (props) => {
-  // --- AQUI ESTÁ A CORREÇÃO ---
-  // Usamos 'useState' com uma função. Isso garante que o 'createClient'
-  // só é chamado UMA VEZ, quando o componente é montado pelo React.
   const [agoraClient] = useState(() => AgoraRTC.createClient({ codec: "vp8", mode: "rtc" }));
 
   return (
-    // Passamos o cliente do 'useState' para o Provider
     <AgoraRTCProvider client={agoraClient}>
       <CallManager {...props} />
     </AgoraRTCProvider>
