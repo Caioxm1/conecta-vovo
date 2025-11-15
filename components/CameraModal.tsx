@@ -34,35 +34,38 @@ const CameraView: React.FC<CameraModalProps> = ({ onClose, onSendMessage, curren
   const videoRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // useEffect #1: Criar e ligar a câmera ao abrir o modal
+  // --- FUNÇÃO SEPARADA PARA CRIAR/REINICIAR A CÂMERA ---
+  const createCamera = async () => {
+    try {
+      console.log("CameraModal: Criando trilha de câmera...");
+      const camTrack = await AgoraRTC.createCameraVideoTrack();
+      setLocalCamTrack(camTrack);
+      
+      const devices = await AgoraRTC.getCameras();
+      console.log("Câmeras disponíveis:", devices);
+      setVideoDevices(devices);
+      
+      const currentDeviceId = camTrack.getTrack().getSettings().deviceId;
+      const currentIndex = devices.findIndex(device => device.deviceId === currentDeviceId);
+      if (currentIndex !== -1) {
+        setCurrentCamIndex(currentIndex);
+      }
+      return camTrack; // Retorna a trilha criada
+    } catch (error) {
+      console.error("Falha ao criar câmera:", error);
+      alert("Não foi possível acessar a câmera. Verifique as permissões.");
+      onClose(); // Fecha o modal se falhar
+      return null;
+    }
+  };
+  
+  // --- useEffect #1: Ligar a câmera ao abrir o modal ---
   useEffect(() => {
     let camTrack: ICameraVideoTrack | null = null;
-
-    const createCamera = async () => {
-      try {
-        console.log("CameraModal: Criando trilha de câmera...");
-        camTrack = await AgoraRTC.createCameraVideoTrack();
-        setLocalCamTrack(camTrack);
-        
-        // Carrega a lista de câmeras
-        const devices = await AgoraRTC.getCameras();
-        console.log("Câmeras disponíveis:", devices);
-        setVideoDevices(devices);
-        
-        const currentDeviceId = camTrack.getTrack().getSettings().deviceId;
-        const currentIndex = devices.findIndex(device => device.deviceId === currentDeviceId);
-        if (currentIndex !== -1) {
-          setCurrentCamIndex(currentIndex);
-        }
-
-      } catch (error) {
-        console.error("Falha ao criar câmera:", error);
-        alert("Não foi possível acessar a câmera. Verifique as permissões.");
-        onClose(); // Fecha o modal se falhar
-      }
-    };
-
-    createCamera();
+    
+    createCamera().then(track => {
+      camTrack = track; // Guarda a referência da trilha
+    });
 
     // Função de Limpeza
     return () => {
@@ -73,7 +76,8 @@ const CameraView: React.FC<CameraModalProps> = ({ onClose, onSendMessage, curren
       }
       setLocalCamTrack(null);
     };
-  }, [onClose]);
+  }, []); // <-- CORREÇÃO: Removido [onClose], array vazio roda só 1 vez
+  // --------------------------------------------------------
 
   // Função para trocar de câmera (lógica do CallManager)
   const handleFlipCamera = async () => {
@@ -92,8 +96,6 @@ const CameraView: React.FC<CameraModalProps> = ({ onClose, onSendMessage, curren
   // Função para BATER A FOTO
   const handleTakePhoto = () => {
     if (!videoRef.current || !canvasRef.current || !localCamTrack) return;
-
-    // Pega o elemento <video> de dentro do componente do Agora
     const videoElement = videoRef.current.querySelector('video');
     if (!videoElement) return;
 
@@ -101,14 +103,10 @@ const CameraView: React.FC<CameraModalProps> = ({ onClose, onSendMessage, curren
     const context = canvas.getContext('2d');
     if (!context) return;
     
-    // Define o tamanho do canvas para o tamanho do vídeo
     canvas.width = videoElement.videoWidth;
     canvas.height = videoElement.videoHeight;
-    
-    // Desenha o frame atual do vídeo no canvas
     context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
     
-    // Converte o canvas para um Data URL (base64)
     const dataUrl = canvas.toDataURL('image/jpeg');
     setPhotoDataUrl(dataUrl);
     
@@ -123,20 +121,16 @@ const CameraView: React.FC<CameraModalProps> = ({ onClose, onSendMessage, curren
   // Função para ENVIAR A FOTO
   const handleSendPhoto = async () => {
     if (!photoDataUrl) return;
-
     setIsUploading(true);
     const fileName = `photos/${uuid()}.jpg`;
     const storageRef = ref(storage, fileName);
 
     try {
-      // 1. Faz o upload da string base64
       const snapshot = await uploadString(storageRef, photoDataUrl, 'data_url');
-      // 2. Pega a URL de download
       const downloadURL = await getDownloadURL(snapshot.ref);
-      // 3. Envia a URL como mensagem
       onSendMessage(MessageType.IMAGE, downloadURL);
       console.log("Foto enviada!");
-      onClose(); // Fecha o modal
+      onClose();
     } catch (error) {
       console.error("Erro ao enviar foto:", error);
       alert("Não foi possível enviar a foto.");
@@ -145,16 +139,17 @@ const CameraView: React.FC<CameraModalProps> = ({ onClose, onSendMessage, curren
     }
   };
 
-  // Função para TENTAR DE NOVO (limpa a foto)
+  // --- FUNÇÃO "TIRAR OUTRA" CORRIGIDA ---
   const handleRetakePhoto = () => {
-    setPhotoDataUrl(null);
-    // Reinicia a câmera
-    const restartCamera = async () => {
-        camTrack = await AgoraRTC.createCameraVideoTrack();
-        setLocalCamTrack(camTrack);
-    }
-    restartCamera();
+    setPhotoDataUrl(null); // Volta para a tela da câmera
+    // Recria a câmera (ela foi fechada no handleTakePhoto)
+    createCamera().then(track => {
+      // O useEffect principal não vai rodar de novo,
+      // então precisamos atualizar a trilha aqui.
+      // A limpeza do useEffect anterior já rodou.
+    });
   };
+  // ---------------------------------------
 
   return (
     <div className="absolute inset-0 z-50 bg-black flex flex-col items-center justify-center">
