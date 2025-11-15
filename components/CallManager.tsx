@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { User, ActiveCall } from '../types';
 import { CallState, CallType } from '../types';
 
+// Importa o AgoraRTC, mas NÃO cria o cliente aqui
 import AgoraRTC from 'agora-rtc-sdk-ng'; 
 import {
   AgoraRTCProvider,
@@ -23,7 +24,7 @@ interface CallManagerProps {
   agoraAppId: string;
 }
 
-const agoraClient = AgoraRTC.createClient({ codec: "vp8", mode: "rtc" });
+// *** A LINHA DUPLICADA 'const agoraClient = ...' FOI REMOVIDA DAQUI ***
 
 // Sub-componente que gerencia a lógica da chamada ATIVA (Sem mudanças)
 const VideoCall: React.FC<{ 
@@ -64,19 +65,18 @@ const VideoCall: React.FC<{
   );
 };
 
-// Componente Principal (COM A LÓGICA CORRIGIDA)
+// Componente Principal (COM AS CORREÇÕES)
 const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall, currentUser, agoraAppId }) => {
   const { state, type, withUser, channelName } = call;
   const [callDuration, setCallDuration] = useState(0);
   const [isJoined, setIsJoined] = useState(false);
 
-  // --- A CORREÇÃO ESTÁ AQUI ---
-  // Os hooks são chamados IMEDIATAMENTE.
-  // Isso faz o navegador pedir permissão ENQUANTO está tocando.
-  // Dizemos aos hooks para SÓ CRIAR as trilhas, mas NÃO publicá-las automaticamente.
+  // --- CORREÇÃO #1: Adicionado { publish: false } ---
+  // Isso impede a publicação automática antes de entrar no canal.
   const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack(true, { publish: false });
   const { localCameraTrack, camReady } = useLocalCameraTrack(type === CallType.VIDEO, { publish: false });
   
+  // Este hook agora pegará o cliente correto do <AgoraRTCProvider>
   const agoraClient = useRTCClient();
 
   // useEffect SEPARADO #1: Entrar e Sair do Canal
@@ -107,6 +107,7 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
     if (isJoined && micReady && localMicrophoneTrack) {
       console.log("useEffect [Mic]: Publicando microfone...");
       localMicrophoneTrack.setEnabled(true);
+      // Publica a trilha manualmente
       agoraClient.publish([localMicrophoneTrack]);
     }
   }, [isJoined, micReady, localMicrophoneTrack, agoraClient]);
@@ -117,6 +118,7 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
     if (isJoined && camReady && localCameraTrack && type === CallType.VIDEO) {
       console.log("useEffect [Cam]: Publicando câmera...");
       localCameraTrack.setEnabled(true);
+      // Publica a trilha manualmente
       agoraClient.publish([localCameraTrack]);
     }
   }, [isJoined, camReady, localCameraTrack, type, agoraClient]);
@@ -202,7 +204,8 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
 };
 
 
-// Componente "Pai" que fornece o Cliente Agora (Sem mudanças)
+// Componente "Pai" que fornece o Cliente Agora
+// Esta é a única parte que cria o cliente.
 const AgoraWrapper: React.FC<CallManagerProps> = (props) => {
   const [agoraClient] = useState(() => AgoraRTC.createClient({ codec: "vp8", mode: "rtc" }));
 
