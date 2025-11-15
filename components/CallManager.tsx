@@ -62,7 +62,7 @@ const VideoCall: React.FC<{
   );
 };
 
-// Componente Principal (LÓGICA DE PUBLICAÇÃO SIMPLIFICADA)
+// Componente Principal (LÓGICA DE PUBLICAÇÃO MANUAL)
 const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall, currentUser, agoraAppId }) => {
   const { state, type, withUser, channelName } = call;
   const [callDuration, setCallDuration] = useState(0);
@@ -73,7 +73,7 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   const agoraClient = useRTCClient();
 
   // 2. Criar mídias, mas SÓ QUANDO 'isJoined' for true
-  // Continuamos usando { publish: false } para controlar manualmente
+  // Usamos { publish: false } para controlar manualmente
   const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack(isJoined, { publish: false });
   const { localCameraTrack, camReady } = useLocalCameraTrack(isJoined && type === CallType.VIDEO, { publish: false });
   
@@ -118,7 +118,7 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
       agoraClient.publish([localMicrophoneTrack])
         .catch(e => console.error("Falha ao publicar microfone:", e));
     }
-    // **NÃO HÁ FUNÇÃO DE LIMPEZA AQUI**
+    // Não precisa de limpeza aqui
   }, [isJoined, micReady, localMicrophoneTrack, agoraClient]);
 
   // 5. useEffect #3: Lógica de Publicar Câmera
@@ -129,7 +129,7 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
       agoraClient.publish([localCameraTrack])
         .catch(e => console.error("Falha ao publicar câmera:", e));
     }
-    // **NÃO HÁ FUNÇÃO DE LIMPEZA AQUI**
+    // Não precisa de limpeza aqui
   }, [isJoined, camReady, localCameraTrack, agoraClient, type]);
 
   // 6. useEffect #4: Lógica do Timer
