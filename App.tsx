@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense, useRef } from 'react'; // <-- Adicionado useRef
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, db } from './firebase';
 import { 
@@ -29,38 +29,29 @@ function App() {
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
-  // --- useEffect DE LOGIN CORRIGIDO (QUEBRA DO LOOP) ---
+  // --- NOVO: Ref para guardar o áudio do toque ---
+  const ringtoneRef = useRef<HTMLAudioElement | null>(null);
+  // ---------------------------------------------
+
+  // useEffect de Login (Corrigido)
   useEffect(() => {
     let unsubscribeUser: () => void = () => {}; 
-    let tokenRequested = false; // <-- Variável de controle para o loop
+    let tokenRequested = false; 
 
     if (userAuth) {
       const userRef = doc(db, 'users', userAuth.uid);
       const pendingRef = doc(db, 'pendingUsers', userAuth.uid);
       
-      // Ouve o documento do usuário APROVADO
       unsubscribeUser = onSnapshot(userRef, (userSnap) => {
         if (userSnap.exists()) {
-          // 1. APROVADO! Carrega o perfil.
           const userData = userSnap.data() as User;
           setCurrentUser(userData);
-          
-          // --- LÓGICA DE CORREÇÃO DO LOOP ---
-          // Só roda na primeira vez que o usuário é carregado
           if (!tokenRequested) { 
-            tokenRequested = true; // Marca como feito
-            
-            // Atualiza o status para "online"
+            tokenRequested = true;
             setDoc(userRef, { lastSeen: serverTimestamp(), status: 'online' }, { merge: true });
-            
-            // Pede o token de notificação (só 1 vez)
             requestPermissionAndSaveToken(userAuth.uid);
           }
-          // ------------------------------------
-
         } else {
-          // 2. NÃO APROVADO (Pendente ou novo)
-          // Para de ouvir o documento 'users' para evitar loops de login
           unsubscribeUser(); 
           checkPendingStatus(userAuth.uid);
         }
@@ -69,11 +60,9 @@ function App() {
       const checkPendingStatus = async (uid: string) => {
         const pendingSnap = await getDoc(pendingRef);
         if (pendingSnap.exists()) {
-          // 3. JÁ PENDENTE.
           alert("Seu acesso ainda está aguardando aprovação de um administrador. Por favor, tente novamente mais tarde.");
           auth.signOut();
         } else {
-          // 4. USUÁRIO NOVO.
           await setDoc(pendingRef, {
             id: userAuth.uid,
             name: userAuth.displayName || 'Usuário',
@@ -88,18 +77,15 @@ function App() {
       };
 
     } else {
-      // Usuário deslogou
-      unsubscribeUser(); // Para de ouvir
+      unsubscribeUser();
       setCurrentUser(null);
     }
     
-    // Limpeza
     return () => unsubscribeUser();
     
-  }, [userAuth]); // Roda só quando o userAuth (do Google) muda
-  // ----------------------------------------
+  }, [userAuth]);
 
-  // useEffect (Deep Link de Notificação de Chamada) - Sem mudanças
+  // useEffect (Deep Link de Notificação de Chamada)
   useEffect(() => {
     if (!currentUser) return;
     const params = new URLSearchParams(window.location.search);
@@ -129,20 +115,38 @@ function App() {
     }
   }, [currentUser, activeCall]);
 
-  // useEffect: OUVINTE DE CHAMADAS 'INCOMING' (sem mudanças)
+  // --- useEffect: OUVINTE DE CHAMADAS 'INCOMING' (MODIFICADO) ---
   useEffect(() => {
     if (!currentUser) return;
+    
     const callsRef = collection(db, "calls");
     const q = query(callsRef, 
       where("receiverId", "==", currentUser.id),
       where("status", "==", "ringing")
     );
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
+        // Se já estiver em chamada ou tocando, não faz nada
+        if (activeCall || ringtoneRef.current) return;
+        
         const callDoc = snapshot.docs[0]; 
         const callData = callDoc.data();
+        
         getDoc(doc(db, "users", callData.callerId)).then(userDoc => {
           if (userDoc.exists()) {
+            
+            // --- TOCA O SOM DA CHAMADA ---
+            try {
+              const audio = new Audio('/sounds/ringtone.mp3');
+              audio.loop = true;
+              audio.play();
+              ringtoneRef.current = audio; // Salva a referência para parar depois
+            } catch (e) {
+              console.error("Erro ao tocar som:", e);
+            }
+            // -----------------------------
+
             const callerData = userDoc.data() as User;
             setActiveCall({
               state: CallState.INCOMING,
@@ -156,7 +160,8 @@ function App() {
       }
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, activeCall]); // Adicionado activeCall
+  // ----------------------------------------------------
 
   // useEffect: OUVINTE DO ESTADO DA CHAMADA ATIVA (sem mudanças)
   useEffect(() => {
@@ -165,6 +170,12 @@ function App() {
     const unsubscribe = onSnapshot(callRef, (docSnapshot) => {
       if (!docSnapshot.exists()) {
         console.log("Chamada encerrada pela outra parte.");
+        // --- PARA O SOM (SE ESTIVER TOCANDO) ---
+        if (ringtoneRef.current) {
+          ringtoneRef.current.pause();
+          ringtoneRef.current = null;
+        }
+        // -------------------------------------
         setActiveCall(null);
         return;
       }
@@ -240,8 +251,14 @@ function App() {
     });
   };
   
-  // handleAcceptCall (sem mudanças)
+  // --- handleAcceptCall (MODIFICADO) ---
   const handleAcceptCall = async () => {
+    // Para o som de chamada
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause();
+      ringtoneRef.current = null;
+    }
+    
     if (!activeCall || !activeCall.docId) return;
     const callRef = doc(db, "calls", activeCall.docId);
     await updateDoc(callRef, {
@@ -250,8 +267,14 @@ function App() {
     setActiveCall(prev => prev ? { ...prev, state: CallState.ACTIVE } : null);
   };
   
-  // handleEndCall (sem mudanças)
+  // --- handleEndCall (MODIFICADO) ---
   const handleEndCall = async () => {
+    // Para o som de chamada (se estiver tocando)
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause();
+      ringtoneRef.current = null;
+    }
+
     if (!activeCall || !activeCall.docId) return;
     const callRef = doc(db, "calls", activeCall.docId);
     try {
@@ -262,15 +285,13 @@ function App() {
     setActiveCall(null);
   };
 
-  // --- RENDERIZAÇÃO ---
+  // --- RENDERIZAÇÃO (sem mudanças) ---
   if (loadingAuth) {
     return <div className="flex h-screen items-center justify-center">Carregando...</div>;
   }
-
   if (!currentUser) {
     return <LoginScreen />;
   }
-
   if (isCameraOpen && currentUser && chatWithUser) {
     return (
       <CameraModal 
@@ -281,7 +302,6 @@ function App() {
       />
     );
   }
-
   return (
     <div className="h-dvh w-screen font-sans overflow-hidden">
         {activeCall && currentUser && (
@@ -295,7 +315,6 @@ function App() {
             />
           </Suspense>
         )}
-
         <div className="h-full w-full md:hidden">
             {!chatWithUser ? (
                 <FamilyList
@@ -314,7 +333,6 @@ function App() {
                 />
             )}
         </div>
-
         <div className="hidden md:flex h-full w-full">
             <div className="w-auto">
                 <FamilyList
@@ -341,7 +359,6 @@ function App() {
                 )}
             </div>
         </div>
-
     </div>
   );
 }
