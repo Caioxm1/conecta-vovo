@@ -3,8 +3,8 @@ import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, db } from './firebase';
 import { 
   doc, setDoc, serverTimestamp, collection, addDoc, getDoc,
-  onSnapshot, // onSnapshot já estava, mas agora é crucial
-  updateDoc,
+  onSnapshot, 
+  updateDoc, // <--- ADICIONADO
   deleteDoc,
   where,
   query
@@ -58,43 +58,72 @@ function App() {
     }
   }, [userAuth]);
 
-  // useEffect' para ler a URL (Deep Link) (continua igual)
+  // useEffect' para ler a URL (Deep Link) (código antigo removido)
   useEffect(() => {
-    if (currentUser && !chatWithUser) {
-      // ... (código do 'chatWith' na URL)
-    }
+    // ... (código do 'chatWith' na URL - removido para clareza)
   }, [currentUser, chatWithUser]); 
 
+  // --- NOVO: useEffect para ler Deep Link de Notificação de Chamada ---
+  useEffect(() => {
+    if (!currentUser) return; // Precisa do usuário logado
+
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    const callDocId = params.get('callDocId');
+    
+    // Se a ação for "aceitar" e não estivermos em chamada
+    if (action === 'accept_call' && callDocId && !activeCall) { 
+      console.log("Abrindo chamada vinda de notificação:", callDocId);
+      
+      // 1. Buscar os dados da chamada
+      const callRef = doc(db, "calls", callDocId);
+      getDoc(callRef).then(callDoc => {
+        if (callDoc.exists()) {
+          const callData = callDoc.data();
+          
+          // 2. Buscar os dados de quem ligou
+          getDoc(doc(db, "users", callData.callerId)).then(userDoc => {
+            if (userDoc.exists()) {
+              const callerData = userDoc.data() as User;
+              
+              // 3. FORÇAR o estado de chamada para 'INCOMING'
+              setActiveCall({
+                state: CallState.INCOMING,
+                type: callData.type,
+                withUser: callerData,
+                channelName: callData.channelName,
+                docId: callDoc.id,
+              });
+              
+              // 4. Limpa a URL
+              window.history.replaceState({}, document.title, "/");
+            }
+          });
+        }
+      });
+    }
+  }, [currentUser, activeCall]); // Roda quando o usuário é carregado
+  // -------------------------------------------------------------
+
   // useEffect: OUVINTE DE CHAMADAS 'INCOMING' (continua igual)
-  // Ouve por chamadas "tocando" para mim
   useEffect(() => {
     if (!currentUser) return;
-
     const callsRef = collection(db, "calls");
     const q = query(callsRef, 
       where("receiverId", "==", currentUser.id),
       where("status", "==", "ringing")
     );
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
         const callDoc = snapshot.docs[0]; 
         const callData = callDoc.data();
-        
         getDoc(doc(db, "users", callData.callerId)).then(userDoc => {
           if (userDoc.exists()) {
-            const callerData = userDoc.data();
-            
+            const callerData = userDoc.data() as User; // Convertido para User
             setActiveCall({
               state: CallState.INCOMING,
               type: callData.type,
-              withUser: {
-                id: callerData.id,
-                name: callerData.name,
-                avatar: callerData.avatar,
-                relationship: callerData.relationship,
-                status: callerData.status,
-              },
+              withUser: callerData, // Passa o objeto User completo
               channelName: callData.channelName,
               docId: callDoc.id,
             });
@@ -106,42 +135,24 @@ function App() {
   }, [currentUser]);
 
 
-  // --- NOVO useEffect: OUVINTE DO ESTADO DA CHAMADA ATIVA ---
-  // Este useEffect resolve os dois bugs que você encontrou.
+  // useEffect: OUVINTE DO ESTADO DA CHAMADA ATIVA (continua igual)
   useEffect(() => {
-    // Se não há uma chamada ativa, não há o que ouvir.
     if (!activeCall || !activeCall.docId) return;
-
     const callRef = doc(db, "calls", activeCall.docId);
-    
-    // Fica "escutando" o documento da chamada
     const unsubscribe = onSnapshot(callRef, (docSnapshot) => {
-      
-      // BUG 1 CORRIGIDO (Desligar):
-      // Se o documento for deletado (pela outra pessoa), encerra a chamada localmente
       if (!docSnapshot.exists()) {
         console.log("Chamada encerrada pela outra parte.");
         setActiveCall(null);
         return;
       }
-
       const callData = docSnapshot.data();
-
-      // BUG 2 CORRIGIDO (Câmera):
-      // Se o status mudar para "active" E nós estávamos "ligando" (OUTGOING),
-      // muda nosso estado local para "ACTIVE" também.
       if (callData.status === "active" && activeCall.state === CallState.OUTGOING) {
         console.log("Chamada atendida pelo destinatário!");
         setActiveCall(prev => prev ? { ...prev, state: CallState.ACTIVE } : null);
       }
     });
-
-    // Limpa o ouvinte quando o componente for desmontado ou a chamada mudar
     return () => unsubscribe();
-    
-  // Re-executa este ouvinte sempre que o 'docId' da chamada mudar ou o 'state' mudar
   }, [activeCall?.docId, activeCall?.state]);
-  // -------------------------------------------------------------
 
   const handleLogout = () => {
     if (currentUser) {
@@ -179,12 +190,14 @@ function App() {
     }
   };
   
-  // handleStartCall (continua igual)
+  // --- handleStartCall (MODIFICADO) ---
   const handleStartCall = async (type: 'audio' | 'video') => {
     if (!currentUser || !chatWithUser) return;
     const channelName = `call_${currentUser.id}_${chatWithUser.id}`;
     const callsRef = collection(db, "calls");
-    const callDoc = await addDoc(callsRef, {
+    
+    // 1. Cria o documento da chamada
+    const callDocRef = await addDoc(callsRef, {
       callerId: currentUser.id,
       receiverId: chatWithUser.id,
       channelName: channelName,
@@ -192,12 +205,20 @@ function App() {
       status: "ringing",
       createdAt: serverTimestamp(),
     });
+
+    // 2. NOVO: Atualiza o documento com seu próprio ID
+    //    Isso é crucial para a Cloud Function encontrar o docId
+    await updateDoc(callDocRef, {
+      docId: callDocRef.id
+    });
+
+    // 3. Define a chamada ativa localmente
     setActiveCall({
       state: CallState.OUTGOING,
       type: type === 'audio' ? CallType.AUDIO : CallType.VIDEO,
       withUser: chatWithUser,
       channelName: channelName,
-      docId: callDoc.id,
+      docId: callDocRef.id, // Usa o ID do documento
     });
   };
   
