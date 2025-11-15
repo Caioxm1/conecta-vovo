@@ -4,7 +4,11 @@ import {
   collection, query, orderBy, Timestamp, getDocs, 
   writeBatch, where, doc, updateDoc 
 } from 'firebase/firestore'; 
-import { db } from '../firebase';
+// --- IMPORTS ATUALIZADOS ---
+import { db, storage } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { v4 as uuid } from 'uuid';
+// ---------------------------
 
 import type { User, Message } from '../types';
 import { MessageType } from '../types';
@@ -114,6 +118,10 @@ const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSendMessage, onStartCall, onGoBack, onCameraOpen }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // --- NOVO REF PARA INPUT DE FUNDO ---
+  const backgroundInputRef = useRef<HTMLInputElement>(null);
+  // ------------------------------------
 
   // Busca as mensagens em tempo real
   const chatId = currentUser.id > chatWithUser.id 
@@ -124,7 +132,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
   const q = query(messagesRef, orderBy('timestamp', 'asc'));
   const [messagesSnapshot, loadingMessages] = useCollection(q);
 
-  // Converte o snapshot para o nosso tipo Message
   const messages: Message[] = messagesSnapshot?.docs.map(doc => {
     const data = doc.data();
     const timestamp = (data.timestamp as Timestamp)?.toDate().toISOString(); 
@@ -164,40 +171,74 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
   }, [currentUser.id, chatWithUser.id, messagesRef, messagesSnapshot]);
   
 
-  // --- LÓGICA DE PARENTESCO ATUALIZADA ---
-  // Pega o parentesco do SEU mapa privado, ou usa "Família" como padrão
+  // LÓGICA DE PARENTESCO PRIVADO
   const relationshipLabel = 
     currentUser.relationships?.[chatWithUser.id] || 
-    chatWithUser.relationship || // Fallback para o campo antigo (caso exista)
+    chatWithUser.relationship || 
     'Família';
 
-  // --- FUNÇÃO PARA EDITAR PARENTESCO (ATUALIZADA) ---
   const handleEditRelationship = async () => {
     const newRelationship = prompt("Qual o grau de parentesco?", relationshipLabel);
     
     if (newRelationship && newRelationship.trim() !== "") {
       try {
-        // Atualiza o SEU PRÓPRIO documento de usuário
         const userRef = doc(db, 'users', currentUser.id);
-        
-        // Usa a notação de ponto para atualizar um campo dentro do mapa
         await updateDoc(userRef, {
           [`relationships.${chatWithUser.id}`]: newRelationship
         });
-        
-        // A mágica: como o App.tsx está OUVINDO (onSnapshot) o seu usuário,
-        // o 'currentUser' vai atualizar automaticamente e a tela vai mudar!
-
       } catch (error) {
         console.error("Erro ao atualizar parentesco: ", error);
         alert("Não foi possível atualizar o parentesco.");
       }
     }
   };
-  // -------------------------------------------
+
+  // --- NOVA FUNÇÃO: UPLOAD DO FUNDO ---
+  const handleBackgroundUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentUser) return;
+    if (!file.type.startsWith('image/')) {
+        alert("Por favor, selecione apenas arquivos de imagem.");
+        return;
+    }
+
+    alert("Enviando novo plano de fundo..."); // Feedback
+    const fileName = `chat-backgrounds/${currentUser.id}/${file.name}`;
+    const storageRef = ref(storage, fileName);
+
+    try {
+      // 1. Faz o upload
+      const snapshot = await uploadBytes(storageRef, file);
+      // 2. Pega a URL
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      // 3. Atualiza o SEU perfil
+      const userRef = doc(db, 'users', currentUser.id);
+      await updateDoc(userRef, {
+        chatBackground: downloadURL
+      });
+      // O App.tsx vai pegar essa mudança com o onSnapshot e atualizar o app
+      
+    } catch (error) {
+      console.error("Erro ao atualizar plano de fundo:", error);
+      alert("Não foi possível atualizar seu plano de fundo.");
+    } finally {
+      if (event.target) event.target.value = '';
+    }
+  };
+  // ------------------------------------
 
   return (
-    <div className="flex flex-col h-dvh bg-gray-50 w-full">
+    // --- DIV PRINCIPAL MODIFICADA ---
+    <div 
+      className="flex flex-col h-dvh w-full bg-gray-50 bg-cover bg-center"
+      // Adiciona o estilo de fundo dinamicamente
+      style={{
+        backgroundImage: currentUser.chatBackground ? `url(${currentUser.chatBackground})` : 'none',
+        backgroundColor: currentUser.chatBackground ? '' : '#F9FAFB' // bg-gray-50
+      }}
+    >
+    {/* ------------------------------- */}
+    
       {/* --- CABEÇALHO ATUALIZADO --- */}
       <header className="flex items-center p-4 bg-white shadow-md z-10">
         <button onClick={onGoBack} className="p-2 rounded-full hover:bg-gray-200 mr-4">
@@ -209,14 +250,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
         
         <div>
             <h2 className="text-2xl font-bold text-gray-800">{chatWithUser.name}</h2>
-            
             <div className="flex items-center group">
-                {/* Mostra o parentesco privado */}
                 <p className="text-gray-500">{relationshipLabel}</p>
-                
-                {/* Botão de lápis para editar */}
                 <button 
-                    onClick={handleEditRelationship} // Não precisa mais de parâmetros
+                    onClick={handleEditRelationship}
                     className="ml-2 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-black transition-all"
                     title="Editar parentesco"
                 >
@@ -224,10 +261,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
                 </button>
             </div>
         </div>
-        {/* ------------------------------------- */}
         
         <div className="flex-grow"></div>
+        
+        {/* --- BOTÕES DO CABEÇALHO ATUALIZADOS --- */}
         <div className="flex items-center space-x-2">
+            {/* Botão de trocar fundo (NOVO) */}
+            <button 
+              onClick={() => backgroundInputRef.current?.click()} 
+              className="p-3 rounded-full hover:bg-green-100 transition-colors"
+              title="Trocar plano de fundo"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l-1.586-1.586a2 2 0 00-2.828 0L6 14m6-6l.01.01M3 6a2 2 0 012-2h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6z" />
+              </svg>
+            </button>
             <button onClick={() => onStartCall('audio')} className="p-3 rounded-full hover:bg-green-100 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
             </button>
@@ -235,8 +283,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
             </button>
         </div>
+        {/* ------------------------------------- */}
       </header>
-      <main className="flex-grow p-6 overflow-y-auto">
+      
+      {/* Área de Mensagens (com 'bg-opacity' para ver o fundo) */}
+      <main className="flex-grow p-6 overflow-y-auto bg-black bg-opacity-10">
         {loadingMessages && <p className="text-center">Carregando mensagens...</p>}
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} isCurrentUser={msg.senderId === currentUser.id} sender={msg.senderId === currentUser.id ? currentUser : chatWithUser} />
@@ -245,6 +296,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
       </main>
       
       <MessageInput onSendMessage={onSendMessage} onCameraOpen={onCameraOpen} />
+
+      {/* --- INPUT DE ARQUIVO ESCONDIDO (NOVO) --- */}
+      <input
+        type="file"
+        ref={backgroundInputRef}
+        onChange={handleBackgroundUpload}
+        className="hidden"
+        accept="image/*"
+      />
+      {/* -------------------------------------- */}
     </div>
   );
 };

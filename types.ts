@@ -5,7 +5,8 @@ export interface User {
   status: 'online' | 'offline';
   isAdmin?: boolean; 
   relationship?: string; // Mantido como opcional para fallback
-  relationships?: { [key: string]: string }; // <-- CAMPO NOVO
+  relationships?: { [key: string]: string };
+  chatBackground?: string; // <-- ARQUIVO ATUALIZADO AQUI
 }
 
 export enum MessageType {
