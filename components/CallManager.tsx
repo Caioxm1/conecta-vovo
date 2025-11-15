@@ -62,7 +62,7 @@ const VideoCall: React.FC<{
   );
 };
 
-// Componente Principal (COM A LÓGICA DE PUBLICAÇÃO MANUAL)
+// Componente Principal (LÓGICA DE PUBLICAÇÃO SIMPLIFICADA)
 const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall, currentUser, agoraAppId }) => {
   const { state, type, withUser, channelName } = call;
   const [callDuration, setCallDuration] = useState(0);
@@ -73,7 +73,7 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   const agoraClient = useRTCClient();
 
   // 2. Criar mídias, mas SÓ QUANDO 'isJoined' for true
-  // Vamos usar { publish: false } para garantir que NÓS controlamos a publicação
+  // Continuamos usando { publish: false } para controlar manualmente
   const { localMicrophoneTrack, micReady } = useLocalMicrophoneTrack(isJoined, { publish: false });
   const { localCameraTrack, camReady } = useLocalCameraTrack(isJoined && type === CallType.VIDEO, { publish: false });
   
@@ -87,7 +87,7 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
         .then(() => {
           console.log("useEffect [Join]: SUCESSO. Usuário entrou no canal!");
           didJoin = true;
-          // Ativa o 'isJoined'. Isso vai disparar os hooks acima
+          // Ativa o 'isJoined'. Isso vai disparar os hooks acima e abaixo
           setIsJoined(true); 
         })
         .catch(e => console.error("Falha ao entrar no canal:", e));
@@ -98,6 +98,12 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
       console.log("useEffect [Join]: Limpeza.");
       setIsJoined(false);
       if (didJoin) { 
+        // Despublica tudo ao sair (é mais seguro fazer aqui)
+        try {
+          agoraClient.unpublish();
+        } catch (e) {
+          console.error("Erro ao fazer unpublish:", e);
+        }
         agoraClient.leave();
         console.log("useEffect [Join]: Saiu do canal.");
       }
@@ -105,47 +111,37 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   }, [state, agoraClient, agoraAppId, channelName, currentUser.id]);
 
   // 4. useEffect #2: Lógica de Publicar Microfone
-  // Este hook será disparado DEPOIS que 'isJoined' e 'micReady' forem verdadeiros
   useEffect(() => {
-    if (isJoined && micReady && localMicrophoneTrack) {
+    // Se entramos, o mic está pronto e AINDA não foi publicado
+    if (isJoined && micReady && localMicrophoneTrack && !localMicrophoneTrack.isPublished) {
       console.log("useEffect [Mic]: Publicando microfone...");
       agoraClient.publish([localMicrophoneTrack])
         .catch(e => console.error("Falha ao publicar microfone:", e));
-      
-      return () => {
-        console.log("useEffect [Mic]: Removendo microfone...");
-        agoraClient.unpublish([localMicrophoneTrack])
-          .catch(e => console.error("Falha ao remover microfone:", e));
-      };
     }
-  }, [isJoined, micReady, localMicrophoneTrack, agoraClient]); // Depende de todas estas variáveis
+    // **NÃO HÁ FUNÇÃO DE LIMPEZA AQUI**
+  }, [isJoined, micReady, localMicrophoneTrack, agoraClient]);
 
   // 5. useEffect #3: Lógica de Publicar Câmera
-  // Este hook será disparado DEPOIS que 'isJoined' e 'camReady' forem verdadeiros
   useEffect(() => {
-    if (isJoined && camReady && localCameraTrack && type === CallType.VIDEO) {
+    // Se entramos, a câmera está pronta e AINDA não foi publicada
+    if (isJoined && camReady && localCameraTrack && type === CallType.VIDEO && !localCameraTrack.isPublished) {
       console.log("useEffect [Cam]: Publicando câmera...");
       agoraClient.publish([localCameraTrack])
         .catch(e => console.error("Falha ao publicar câmera:", e));
-      
-      return () => {
-        console.log("useEffect [Cam]: Removendo câmera...");
-        agoraClient.unpublish([localCameraTrack])
-          .catch(e => console.error("Falha ao remover câmera:", e));
-      };
     }
-  }, [isJoined, camReady, localCameraTrack, agoraClient, type]); // Depende de todas estas variáveis
+    // **NÃO HÁ FUNÇÃO DE LIMPEZA AQUI**
+  }, [isJoined, camReady, localCameraTrack, agoraClient, type]);
 
   // 6. useEffect #4: Lógica do Timer
   useEffect(() => {
     let timer: number | undefined;
-    if (isJoined) { // O timer só começa quando o join está 100% completo
+    if (isJoined) {
       timer = window.setInterval(() => {
         setCallDuration(prev => prev + 1);
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [isJoined]); // A dependência agora é 'isJoined'
+  }, [isJoined]);
 
   
   // O resto do componente (formatDuration, getCallStatusText, e o JSX) continua 100% igual
@@ -162,7 +158,6 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
       case CallState.INCOMING:
         return `${withUser.name} está te ligando...`;
       case CallState.ACTIVE:
-        // Mostra "Conectando..." até que o join seja bem-sucedido
         return isJoined ? formatDuration(callDuration) : "Conectando...";
       default:
         return '';
@@ -172,7 +167,6 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   return (
     <div className="absolute inset-0 bg-gray-800 bg-opacity-90 flex flex-col items-center justify-center z-50 text-white">
       
-      {/* Só renderize o VideoCall DEPOIS que o join estiver completo (isJoined) */}
       {isJoined && (
         <VideoCall 
           channelName={channelName} 
@@ -188,7 +182,6 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
             <p className="text-2xl mt-4 opacity-80">{getCallStatusText()}</p>
         </div>
 
-        {/* Mostra o avatar apenas se for áudio OU se ainda não estiver conectado */}
         {(type === CallType.AUDIO || !isJoined) && (
             <div className="flex flex-col items-center">
                 <img src={withUser.avatar} alt={withUser.name} className="w-48 h-48 rounded-full border-8 border-white shadow-2xl mb-4" />
