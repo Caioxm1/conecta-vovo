@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import type { User, ActiveCall } from '../types';
 import { CallState, CallType } from '../types';
+
+// --- ESTA É A CORREÇÃO ---
+// Importamos o SDK principal 'AgoraRTC' do novo pacote
+import AgoraRTC from 'agora-rtc-sdk-ng'; 
+// E mantemos os 'hooks' e 'componentes' do pacote React
 import {
   AgoraRTCProvider,
   useRTCClient,
@@ -11,8 +16,8 @@ import {
   RemoteUser,
   ICameraVideoTrack,
   IMicrophoneAudioTrack,
-  AgoraRTC, // <-- 1. IMPORTAÇÃO ADICIONADA
 } from 'agora-rtc-react';
+// -------------------------
 
 interface CallManagerProps {
   call: ActiveCall;
@@ -22,8 +27,8 @@ interface CallManagerProps {
   agoraAppId: string;
 }
 
-// 2. CRIAMOS O CLIENTE FORA DO COMPONENTE
-// Isso garante que ele exista ANTES do React tentar usá-lo.
+// CRIAMOS O CLIENTE FORA DO COMPONENTE
+// Agora o 'AgoraRTC' é uma importação válida
 const agoraClient = AgoraRTC.createClient({ codec: "vp8", mode: "rtc" });
 
 // Sub-componente que gerencia a lógica da chamada ATIVA
@@ -70,7 +75,6 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
   const { camTrack, localCameraTrack } = useLocalCameraTrack();
   
   // Cliente Agora (para entrar e sair do canal)
-  // Este hook AGORA FUNCIONA, pois está DENTRO do Provider
   const agoraClient = useRTCClient();
 
   useEffect(() => {
@@ -183,9 +187,8 @@ const CallManager: React.FC<CallManagerProps> = ({ call, onAcceptCall, onEndCall
 
 // Componente "Pai" que fornece o Cliente Agora
 const AgoraWrapper: React.FC<CallManagerProps> = (props) => {
-  // 3. REMOVIDA a linha 'const agoraClient = useRTCClient();'
   return (
-    // 4. PASSAMOS o cliente que criamos lá em cima
+    // PASSAMOS o cliente que criamos lá em cima
     <AgoraRTCProvider client={agoraClient}>
       <CallManager {...props} />
     </AgoraRTCProvider>
