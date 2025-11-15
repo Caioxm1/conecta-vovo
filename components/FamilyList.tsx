@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { useCollection } from 'react-firebase-hooks/firestore';
-// --- Imports atualizados ---
 import { collection, query, where, doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../firebase'; // <--- CORREÇÃO ADICIONADA AQUI
-// -------------------------
+import { db, auth } from '../firebase'; 
 
 import type { User, Message } from '../types';
 import CallHistoryModal from './CallHistoryModal';
@@ -15,14 +13,11 @@ interface FamilyListProps {
   onLogout: () => void;
 }
 
-// --- COMPONENTE: PAINEL DE ADMIN ---
+// --- COMPONENTE: PAINEL DE ADMIN (ATUALIZADO) ---
 const AdminPanel: React.FC = () => {
-  // 1. Hook para buscar usuários pendentes
   const [pendingSnapshot, loadingPending] = useCollection(
     collection(db, 'pendingUsers')
   );
-  
-  // 2. Hook para buscar usuários aprovados (para poder removê-los)
   const [usersSnapshot, loadingUsers] = useCollection(
     collection(db, 'users')
   );
@@ -30,7 +25,7 @@ const AdminPanel: React.FC = () => {
   const pendingUsers = pendingSnapshot?.docs.map(doc => doc.data()) || [];
   const approvedUsers = usersSnapshot?.docs.map(doc => doc.data() as User) || [];
 
-  // 3. Função para APROVAR um usuário
+  // Função para APROVAR (ATUALIZADA)
   const handleApproveUser = async (pendingUser: any) => {
     if (!confirm(`Aprovar ${pendingUser.name} (${pendingUser.email})?`)) {
       return;
@@ -42,7 +37,8 @@ const AdminPanel: React.FC = () => {
         id: pendingUser.id,
         name: pendingUser.name,
         avatar: pendingUser.avatar,
-        relationship: 'Família', // Padrão
+        // REMOVIDO: relationship: 'Família',
+        relationships: {}, // <-- ADICIONADO: Mapa de parentesco vazio
         status: 'offline',
         lastSeen: serverTimestamp(),
       });
@@ -56,13 +52,12 @@ const AdminPanel: React.FC = () => {
     }
   };
 
-  // 4. Função para REMOVER um usuário
+  // Função para REMOVER (sem mudanças)
   const handleRemoveUser = async (userToRemove: User) => {
      if (!confirm(`REMOVER ${userToRemove.name} do app? Esta ação não pode ser desfeita.`)) {
       return;
     }
     try {
-      // Remove o usuário da coleção 'users'
       await deleteDoc(doc(db, 'users', userToRemove.id));
       alert(`${userToRemove.name} foi removido.`);
     } catch (error) {
@@ -103,7 +98,6 @@ const AdminPanel: React.FC = () => {
         <div className="max-h-32 overflow-y-auto">
           {approvedUsers.length <= 1 && <p className="text-sm text-gray-500">Nenhum outro usuário para remover.</p>}
           {approvedUsers.map(user => (
-            // Não deixa você se remover (AGORA COM 'auth' FUNCIONANDO)
             user.id !== auth.currentUser?.uid && (
               <div key={user.id} className="flex justify-between items-center p-2 bg-white rounded shadow-sm my-1">
                 <p className="font-semibold">{user.name}</p>
@@ -124,22 +118,28 @@ const AdminPanel: React.FC = () => {
 const FamilyList: React.FC<FamilyListProps> = ({ currentUser, onSelectUser, onLogout }) => {
   const [isHistoryVisible, setIsHistoryVisible] = useState(false);
 
-  // Hook para buscar usuários (sem mudanças)
+  // Hook para buscar usuários
   const usersRef = collection(db, 'users');
   const q = query(usersRef, where('id', '!=', currentUser.id));
   const [usersSnapshot, loadingUsers] = useCollection(q);
 
+  // --- LÓGICA DE PARENTESCO ATUALIZADA ---
   const family: User[] = usersSnapshot?.docs.map(doc => {
     const data = doc.data();
+    // Pega o parentesco do SEU mapa privado, ou usa "Família" como padrão
+    const privateLabel = currentUser.relationships?.[data.id] || 'Família';
+    
     return {
       id: data.id,
       name: data.name,
       avatar: data.avatar,
-      relationship: data.relationship || 'Família',
+      relationship: privateLabel, // <-- Usa o parentesco privado
       status: data.status || 'offline',
-      isAdmin: data.isAdmin || false, // Pega o status de admin
+      isAdmin: data.isAdmin || false,
+      relationships: data.relationships || {}, // Passa o mapa de parentescos
     } as User;
   }) || [];
+  // ----------------------------------------
 
   const callMessages: Message[] = []; 
 
@@ -154,7 +154,7 @@ const FamilyList: React.FC<FamilyListProps> = ({ currentUser, onSelectUser, onLo
       />
       
       <div className="flex flex-col h-dvh bg-white shadow-lg w-screen md:w-full md:max-w-sm p-6">
-        {/* Cabeçalho com nome e botões (sem mudanças) */}
+        {/* Cabeçalho com nome e botões */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center">
               <img src={currentUser.avatar} alt={currentUser.name} className="w-16 h-16 rounded-full mr-4 border-2 border-green-500" />
@@ -177,19 +177,17 @@ const FamilyList: React.FC<FamilyListProps> = ({ currentUser, onSelectUser, onLo
           </div>
         </div>
         
-        {/* --- PAINEL DE ADMIN (NOVO) --- */}
-        {/* Mostra o painel de admin SE o usuário logado for admin */}
+        {/* Painel de Admin */}
         {currentUser.isAdmin && <AdminPanel />}
-        {/* ----------------------------- */}
 
-        {/* Lista de usuários (sem mudanças) */}
+        {/* Lista de usuários */}
         <div className="space-y-4 flex-grow overflow-y-auto">
           {loadingUsers && <p>Carregando família...</p>}
           {family.map((user) => (
             <UserRow
               key={user.id}
               currentUser={currentUser}
-              user={user}
+              user={user} // O 'user' agora tem o 'relationship' privado
               onSelectUser={onSelectUser}
             />
           ))}

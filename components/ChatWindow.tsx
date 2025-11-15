@@ -16,7 +16,7 @@ interface ChatWindowProps {
   onSendMessage: (type: MessageType, content: string, duration?: number) => void;
   onStartCall: (type: 'audio' | 'video') => void;
   onGoBack: () => void;
-  onCameraOpen: () => void; // <-- ARQUIVO ATUALIZADO AQUI
+  onCameraOpen: () => void;
 }
 
 // --- ÍCONE DE STATUS (Preto e Vermelho) ---
@@ -92,7 +92,7 @@ const MessageBubble: React.FC<{ message: Message; isCurrentUser: boolean; sender
     <div className={`flex items-end gap-3 w-full ${alignment} my-2`}>
         {!isCurrentUser && <img src={sender.avatar} alt={sender.name} className="w-10 h-10 rounded-full" />}
         
-        <div className={`p-4 rounded-2xl max-w-lg ${colors} ${isCurrentUser ? 'rounded-br-none' : 'rounded-bl-none'} ${message.type === MessageType.IMAGE ? 'overflow-hidden' : ''}`}>
+        <div className={`p-4 rounded-2xl max-w-lg ${colors} ${isCurrentUser ? 'rounded-br-none' : 'rounded-bl-none'} ${message.type === MessageType.IMAGE ? 'p-1 overflow-hidden' : ''}`}>
           {renderContent()}
           
           {message.type !== MessageType.IMAGE && (
@@ -164,16 +164,30 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
   }, [currentUser.id, chatWithUser.id, messagesRef, messagesSnapshot]);
   
 
-  // --- FUNÇÃO PARA EDITAR PARENTESCO ---
-  const handleEditRelationship = async (userToEdit: User) => {
-    const newRelationship = prompt("Qual o grau de parentesco?", userToEdit.relationship);
+  // --- LÓGICA DE PARENTESCO ATUALIZADA ---
+  // Pega o parentesco do SEU mapa privado, ou usa "Família" como padrão
+  const relationshipLabel = 
+    currentUser.relationships?.[chatWithUser.id] || 
+    chatWithUser.relationship || // Fallback para o campo antigo (caso exista)
+    'Família';
+
+  // --- FUNÇÃO PARA EDITAR PARENTESCO (ATUALIZADA) ---
+  const handleEditRelationship = async () => {
+    const newRelationship = prompt("Qual o grau de parentesco?", relationshipLabel);
     
     if (newRelationship && newRelationship.trim() !== "") {
       try {
-        const userRef = doc(db, 'users', userToEdit.id);
+        // Atualiza o SEU PRÓPRIO documento de usuário
+        const userRef = doc(db, 'users', currentUser.id);
+        
+        // Usa a notação de ponto para atualizar um campo dentro do mapa
         await updateDoc(userRef, {
-          relationship: newRelationship
+          [`relationships.${chatWithUser.id}`]: newRelationship
         });
+        
+        // A mágica: como o App.tsx está OUVINDO (onSnapshot) o seu usuário,
+        // o 'currentUser' vai atualizar automaticamente e a tela vai mudar!
+
       } catch (error) {
         console.error("Erro ao atualizar parentesco: ", error);
         alert("Não foi possível atualizar o parentesco.");
@@ -184,7 +198,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
 
   return (
     <div className="flex flex-col h-dvh bg-gray-50 w-full">
-      {/* --- CABEÇALHO --- */}
+      {/* --- CABEÇALHO ATUALIZADO --- */}
       <header className="flex items-center p-4 bg-white shadow-md z-10">
         <button onClick={onGoBack} className="p-2 rounded-full hover:bg-gray-200 mr-4">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -193,14 +207,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
         </button>
         <img src={chatWithUser.avatar} alt={chatWithUser.name} className="w-14 h-14 rounded-full mr-4" />
         
-        {/* Nome e Parentesco (com botão de editar) */}
         <div>
             <h2 className="text-2xl font-bold text-gray-800">{chatWithUser.name}</h2>
             
             <div className="flex items-center group">
-                <p className="text-gray-500">{chatWithUser.relationship}</p>
+                {/* Mostra o parentesco privado */}
+                <p className="text-gray-500">{relationshipLabel}</p>
+                
+                {/* Botão de lápis para editar */}
                 <button 
-                    onClick={() => handleEditRelationship(chatWithUser)}
+                    onClick={handleEditRelationship} // Não precisa mais de parâmetros
                     className="ml-2 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-black transition-all"
                     title="Editar parentesco"
                 >
@@ -208,6 +224,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
                 </button>
             </div>
         </div>
+        {/* ------------------------------------- */}
         
         <div className="flex-grow"></div>
         <div className="flex items-center space-x-2">
@@ -227,7 +244,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ currentUser, chatWithUser, onSe
         <div ref={messagesEndRef} />
       </main>
       
-      {/* Passa onCameraOpen para o MessageInput */}
       <MessageInput onSendMessage={onSendMessage} onCameraOpen={onCameraOpen} />
     </div>
   );

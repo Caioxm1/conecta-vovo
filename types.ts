@@ -2,15 +2,16 @@ export interface User {
   id: string;
   name: string;
   avatar: string;
-  relationship: string;
   status: 'online' | 'offline';
   isAdmin?: boolean; 
+  relationship?: string; // Mantido como opcional para fallback
+  relationships?: { [key: string]: string }; // <-- CAMPO NOVO
 }
 
 export enum MessageType {
   TEXT = 'text',
   VOICE = 'voice',
-  IMAGE = 'image', // <-- ARQUIVO ATUALIZADO AQUI
+  IMAGE = 'image',
   VIDEO_CALL = 'video_call',
   AUDIO_CALL = 'audio_call',
   MISSED_CALL = 'missed_call',

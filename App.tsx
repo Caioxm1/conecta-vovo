@@ -3,7 +3,7 @@ import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, db } from './firebase';
 import { 
   doc, setDoc, serverTimestamp, collection, addDoc, getDoc,
-  onSnapshot, 
+  onSnapshot, // onSnapshot é a chave aqui
   updateDoc,
   deleteDoc,
   where,
@@ -14,9 +14,7 @@ import { requestPermissionAndSaveToken } from './src/fcm';
 import LoginScreen from './components/LoginScreen';
 import FamilyList from './components/FamilyList';
 import ChatWindow from './components/ChatWindow';
-// --- IMPORTAÇÃO NOVA ---
 import CameraModal from './components/CameraModal';
-// ----------------------
 import type { User, Message, ActiveCall } from './types';
 import { MessageType, CallState, CallType } from './types';
 
@@ -29,50 +27,68 @@ function App() {
   
   const [chatWithUser, setChatWithUser] = useState<User | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
-  
-  // --- NOVO ESTADO PARA O MODAL DA CÂMERA ---
   const [isCameraOpen, setIsCameraOpen] = useState(false);
-  // ----------------------------------------
 
-  // useEffect de Login (CORRIGIDO)
+  // --- useEffect DE LOGIN ATUALIZADO PARA onSnapshot ---
   useEffect(() => {
+    let unsubscribeUser: () => void = () => {}; // Função para parar de ouvir
+
     if (userAuth) {
+      // 1. Usuário logou com Google. Vamos checar o status dele.
       const userRef = doc(db, 'users', userAuth.uid);
       const pendingRef = doc(db, 'pendingUsers', userAuth.uid);
       
-      const checkUserStatus = async () => {
-        const userSnap = await getDoc(userRef);
+      // Ouve o documento do usuário APROVADO em tempo real
+      unsubscribeUser = onSnapshot(userRef, (userSnap) => {
         if (userSnap.exists()) {
+          // 1a. SIM, APROVADO! Carrega o perfil.
           const userData = userSnap.data() as User;
           setCurrentUser(userData);
-          setDoc(userRef, { lastSeen: serverTimestamp(), status: 'online' }, { merge: true });
-          requestPermissionAndSaveToken(userAuth.uid);
-          return;
+          
+          // Atualiza o status para "online" (só na primeira vez)
+          if (currentUser === null) {
+            setDoc(userRef, { lastSeen: serverTimestamp(), status: 'online' }, { merge: true });
+            requestPermissionAndSaveToken(userAuth.uid);
+          }
+        } else {
+          // 1b. NÃO APROVADO (Pendente ou novo)
+          // Precisamos verificar se ele é novo ou já pendente
+          checkPendingStatus(userAuth.uid);
         }
-        
+      });
+
+      const checkPendingStatus = async (uid: string) => {
         const pendingSnap = await getDoc(pendingRef);
         if (pendingSnap.exists()) {
+          // 2. JÁ PENDENTE.
           alert("Seu acesso ainda está aguardando aprovação de um administrador. Por favor, tente novamente mais tarde.");
           auth.signOut();
-          return;
+        } else {
+          // 3. USUÁRIO NOVO. Adiciona na lista de pendentes.
+          await setDoc(pendingRef, {
+            id: userAuth.uid,
+            name: userAuth.displayName || 'Usuário',
+            avatar: userAuth.photoURL || `https://picsum.photos/seed/${userAuth.uid}/200`,
+            email: userAuth.email,
+            status: 'pending',
+            requestedAt: serverTimestamp(),
+          });
+          alert("Obrigado por se registrar! Seu acesso precisa ser aprovado por um administrador. Por favor, aguarde.");
+          auth.signOut();
         }
-
-        await setDoc(pendingRef, {
-          id: userAuth.uid,
-          name: userAuth.displayName || 'Usuário',
-          avatar: userAuth.photoURL || `https://picsum.photos/seed/${userAuth.uid}/200`,
-          email: userAuth.email,
-          status: 'pending',
-          requestedAt: serverTimestamp(),
-        });
-        alert("Obrigado por se registrar! Seu acesso precisa ser aprovado por um administrador. Por favor, aguarde.");
-        auth.signOut();
       };
-      checkUserStatus();
+
     } else {
+      // Usuário deslogou
+      unsubscribeUser(); // Para de ouvir
       setCurrentUser(null);
     }
-  }, [userAuth]);
+    
+    // Limpeza: parar de ouvir o snapshot quando o usuário deslogar
+    return () => unsubscribeUser();
+    
+  }, [userAuth]); // Roda sempre que o estado de auth do Google mudar
+  // ----------------------------------------
 
   // useEffect (Deep Link de Notificação de Chamada)
   useEffect(() => {
@@ -246,7 +262,6 @@ function App() {
     return <LoginScreen />;
   }
 
-  // --- RENDERIZAÇÃO DO MODAL DA CÂMERA (NOVO) ---
   if (isCameraOpen && currentUser && chatWithUser) {
     return (
       <CameraModal 
@@ -257,7 +272,6 @@ function App() {
       />
     );
   }
-  // ---------------------------------------------
 
   return (
     <div className="h-dvh w-screen font-sans overflow-hidden">
@@ -273,7 +287,6 @@ function App() {
           </Suspense>
         )}
 
-        {/* --- LAYOUT PARA CELULAR --- */}
         <div className="h-full w-full md:hidden">
             {!chatWithUser ? (
                 <FamilyList
@@ -288,12 +301,11 @@ function App() {
                     onSendMessage={handleSendMessage}
                     onStartCall={handleStartCall}
                     onGoBack={() => setChatWithUser(null)}
-                    onCameraOpen={() => setIsCameraOpen(true)} // <-- Passa a função
+                    onCameraOpen={() => setIsCameraOpen(true)}
                 />
             )}
         </div>
 
-        {/* --- LAYTAOUT PARA DESKTOP --- */}
         <div className="hidden md:flex h-full w-full">
             <div className="w-auto">
                 <FamilyList
@@ -310,7 +322,7 @@ function App() {
                         onSendMessage={handleSendMessage}
                         onStartCall={handleStartCall}
                         onGoBack={() => setChatWithUser(null)}
-                        onCameraOpen={() => setIsCameraOpen(true)} // <-- Passa a função
+                        onCameraOpen={() => setIsCameraOpen(true)}
                     />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full bg-gray-50 text-gray-500">
