@@ -122,7 +122,7 @@ function App() {
     }
   }, [currentUser, activeCall]);
 
-  // useEffect: Ouvinte de Chamadas 'Incoming'
+  // --- useEffect: OUVINTE DE CHAMADAS 'INCOMING' (MODIFICADO) ---
   useEffect(() => {
     if (!currentUser) return;
     const callsRef = collection(db, "calls");
@@ -137,14 +137,28 @@ function App() {
         const callData = callDoc.data();
         getDoc(doc(db, "users", callData.callerId)).then(userDoc => {
           if (userDoc.exists()) {
+            
+            // --- LÓGICA DE SOM ATUALIZADA ---
             try {
-              const audio = new Audio('/sounds/ringtone');
+              const audio = new Audio('/sounds/ringtone.mp3');
               audio.loop = true;
-              audio.play();
               ringtoneRef.current = audio;
+              
+              const playPromise = audio.play(); // Tenta tocar
+              
+              if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                  // Erro 'NotAllowedError': O usuário não interagiu com a página
+                  // A notificação push (do Service Worker) vai tocar,
+                  // mas o som da aba não pode. Não há o que fazer aqui.
+                  console.warn("Não foi possível tocar o som da chamada: O usuário precisa interagir com a página primeiro.", error);
+                });
+              }
             } catch (e) {
               console.error("Erro ao tocar som:", e);
             }
+            // -----------------------------
+
             const callerData = userDoc.data() as User;
             setActiveCall({
               state: CallState.INCOMING,
@@ -159,8 +173,9 @@ function App() {
     });
     return () => unsubscribe();
   }, [currentUser, activeCall]);
+  // ----------------------------------------------------
 
-  // useEffect: Ouvinte do Estado da Chamada Ativa
+  // useEffect: OUVINTE DO ESTADO DA CHAMADA ATIVA
   useEffect(() => {
     if (!activeCall || !activeCall.docId) return;
     const callRef = doc(db, "calls", activeCall.docId);
@@ -216,21 +231,13 @@ function App() {
   // Função: Enviar Mensagem
   const handleSendMessage = async (type: MessageType, content: string, duration?: number) => {
     if (!currentUser || !chatWithUser) return;
-    
-    // Define o ID do chat (para quem envia e quem recebe)
     let finalChatUser = chatWithUser;
     
-    // --- LÓGICA DE CHAMADA PERDIDA ---
-    // Se a mensagem for de chamada perdida, o 'chatWithUser' pode estar errado
-    // (ex: o autor da chamada desligou). Precisamos garantir que estamos
-    // salvando no chat correto (entre o autor e o receptor).
     if (type === MessageType.MISSED_CALL && activeCall) {
       const caller = (activeCall.state === CallState.OUTGOING) ? currentUser : activeCall.withUser;
       const receiver = (activeCall.state === CallState.OUTGOING) ? activeCall.withUser : currentUser;
-      // Define o 'finalChatUser' como a outra pessoa na chamada
       finalChatUser = (currentUser.id === caller.id) ? receiver : caller;
     }
-    // ---------------------------------
     
     const chatId = currentUser.id > finalChatUser.id 
       ? `${currentUser.id}_${finalChatUser.id}` 
@@ -292,36 +299,29 @@ function App() {
     setActiveCall(prev => prev ? { ...prev, state: CallState.ACTIVE } : null);
   };
   
-  // --- FUNÇÃO: ENCERRAR CHAMADA (ATUALIZADA) ---
+  // Função: Encerrar Chamada (com Chamada Perdida)
   const handleEndCall = async () => {
-    // 1. Para o toque (se estiver tocando)
     if (ringtoneRef.current) {
       ringtoneRef.current.pause();
       ringtoneRef.current = null;
     }
-
     if (!activeCall || !activeCall.docId || !currentUser) return;
 
-    // --- ESTA É A NOVA LÓGICA ---
-    // 2. Verifica se a chamada foi perdida (tocando e não atendida)
     if (activeCall.state === CallState.INCOMING || activeCall.state === CallState.OUTGOING) {
       console.log("Registrando chamada perdida...");
       
-      // Define quem ligou e quem recebeu
       const caller = (activeCall.state === CallState.OUTGOING) ? currentUser : activeCall.withUser;
       const receiver = (activeCall.state === CallState.OUTGOING) ? activeCall.withUser : currentUser;
 
-      // Cria o ID do chat
       const chatId = caller.id > receiver.id 
         ? `${caller.id}_${receiver.id}` 
         : `${receiver.id}_${caller.id}`;
       
       const messagesRef = collection(db, 'chats', chatId, 'messages');
       
-      // Adiciona uma MENSAGEM do tipo MISSED_CALL
       try {
         await addDoc(messagesRef, {
-          senderId: caller.id, // A chamada é sempre "de" quem ligou
+          senderId: caller.id, 
           receiverId: receiver.id,
           type: MessageType.MISSED_CALL,
           content: `Chamada ${activeCall.type === CallType.VIDEO ? 'de vídeo' : 'de áudio'} não atendida`,
@@ -332,9 +332,7 @@ function App() {
         console.error("Erro ao registrar chamada perdida:", error);
       }
     }
-    // ---------------------------
 
-    // 3. Deleta o documento da chamada (lógica antiga)
     const callRef = doc(db, "calls", activeCall.docId);
     try {
       await deleteDoc(callRef);
@@ -342,7 +340,6 @@ function App() {
       console.error("Erro ao deletar chamada:", error);
     }
     
-    // 4. Limpa o estado da chamada local (lógica antiga)
     setActiveCall(null);
   };
   // ---------------------------------------------
