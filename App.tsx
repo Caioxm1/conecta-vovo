@@ -122,7 +122,7 @@ function App() {
     }
   }, [currentUser, activeCall]);
 
-  // --- useEffect: OUVINTE DE CHAMADAS 'INCOMING' (MODIFICADO) ---
+  // --- useEffect: OUVINTE DE CHAMADAS 'INCOMING' (COM LÓGICA DE SOM CORRIGIDA) ---
   useEffect(() => {
     if (!currentUser) return;
     const callsRef = collection(db, "calls");
@@ -132,25 +132,30 @@ function App() {
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
-        if (activeCall || ringtoneRef.current) return;
+        // CORREÇÃO: Não retorna mais se 'ringtoneRef.current' existir
+        if (activeCall) return; 
+        
         const callDoc = snapshot.docs[0]; 
         const callData = callDoc.data();
         getDoc(doc(db, "users", callData.callerId)).then(userDoc => {
           if (userDoc.exists()) {
             
-            // --- LÓGICA DE SOM ATUALIZADA ---
+            // --- TOCA O SOM DA CHAMADA ---
+            // Para o som antigo (se houver) ANTES de tocar o novo
+            if (ringtoneRef.current) {
+              ringtoneRef.current.pause();
+              ringtoneRef.current = null;
+            }
+            
             try {
               const audio = new Audio('/sounds/ringtone.mp3');
               audio.loop = true;
               ringtoneRef.current = audio;
               
-              const playPromise = audio.play(); // Tenta tocar
+              const playPromise = audio.play();
               
               if (playPromise !== undefined) {
                 playPromise.catch(error => {
-                  // Erro 'NotAllowedError': O usuário não interagiu com a página
-                  // A notificação push (do Service Worker) vai tocar,
-                  // mas o som da aba não pode. Não há o que fazer aqui.
                   console.warn("Não foi possível tocar o som da chamada: O usuário precisa interagir com a página primeiro.", error);
                 });
               }
@@ -172,7 +177,7 @@ function App() {
       }
     });
     return () => unsubscribe();
-  }, [currentUser, activeCall]);
+  }, [currentUser, activeCall]); // Agora 'activeCall' está na dependência correta
   // ----------------------------------------------------
 
   // useEffect: OUVINTE DO ESTADO DA CHAMADA ATIVA
