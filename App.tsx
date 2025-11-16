@@ -15,9 +15,7 @@ import LoginScreen from './components/LoginScreen';
 import FamilyList from './components/FamilyList';
 import ChatWindow from './components/ChatWindow';
 import CameraModal from './components/CameraModal';
-// --- IMPORTAÇÃO NOVA ---
 import type { User, Message, ActiveCall, BeforeInstallPromptEvent } from './types';
-// ----------------------
 import { MessageType, CallState, CallType } from './types';
 
 const AGORA_APP_ID = process.env.AGORA_APP_ID || "";
@@ -31,29 +29,22 @@ function App() {
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const ringtoneRef = useRef<HTMLAudioElement | null>(null);
-  
-  // --- NOVO ESTADO PARA O BOTÃO DE INSTALAR ---
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
-  // ------------------------------------------
 
-  // --- NOVO useEffect: Ouve o evento de instalação ---
+  // useEffect: Ouve o evento de instalação (PWA)
   useEffect(() => {
     const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault(); // Impede o mini-infobar padrão do Chrome
-      setInstallPromptEvent(event as BeforeInstallPromptEvent); // Salva o evento
+      event.preventDefault(); 
+      setInstallPromptEvent(event as BeforeInstallPromptEvent);
       console.log("Evento 'beforeinstallprompt' capturado! O app pode ser instalado.");
     };
-
-    // 'as any' é usado porque 'beforeinstallprompt' não é 100% padrão
     window.addEventListener('beforeinstallprompt' as any, handleBeforeInstallPrompt);
-
     return () => {
       window.removeEventListener('beforeinstallprompt' as any, handleBeforeInstallPrompt);
     };
-  }, []); // Roda só uma vez quando o app carrega
-  // ------------------------------------------------
+  }, []);
 
-  // useEffect de Login (sem mudanças)
+  // useEffect: Login e Status do Usuário
   useEffect(() => {
     let unsubscribeUser: () => void = () => {}; 
     let tokenRequested = false; 
@@ -102,7 +93,7 @@ function App() {
     return () => unsubscribeUser();
   }, [userAuth]);
 
-  // useEffect (Deep Link de Notificação de Chamada) (sem mudanças)
+  // useEffect: Deep Link de Notificação de Chamada
   useEffect(() => {
     if (!currentUser) return;
     const params = new URLSearchParams(window.location.search);
@@ -131,7 +122,7 @@ function App() {
     }
   }, [currentUser, activeCall]);
 
-  // useEffect: OUVINTE DE CHAMADAS 'INCOMING' (sem mudanças)
+  // useEffect: Ouvinte de Chamadas 'Incoming'
   useEffect(() => {
     if (!currentUser) return;
     const callsRef = collection(db, "calls");
@@ -169,7 +160,7 @@ function App() {
     return () => unsubscribe();
   }, [currentUser, activeCall]);
 
-  // useEffect: OUVINTE DO ESTADO DA CHAMADA ATIVA (sem mudanças)
+  // useEffect: Ouvinte do Estado da Chamada Ativa
   useEffect(() => {
     if (!activeCall || !activeCall.docId) return;
     const callRef = doc(db, "calls", activeCall.docId);
@@ -190,29 +181,23 @@ function App() {
     return () => unsubscribe();
   }, [activeCall?.docId, activeCall?.state]);
 
-  // --- NOVA FUNÇÃO: Lida com o clique no botão Instalar ---
+  // Função: Botão de Instalar (PWA)
   const handleInstallClick = async () => {
     if (!installPromptEvent) {
       alert("Não foi possível instalar o app. Tente novamente mais tarde.");
       return;
     }
-    
-    // Mostra o pop-up de instalação do navegador
     installPromptEvent.prompt(); 
-    
-    // Espera a escolha do usuário
     const { outcome } = await installPromptEvent.userChoice;
     if (outcome === 'accepted') {
       console.log('Usuário aceitou a instalação');
-      // Esconde o botão, pois o app já foi instalado
       setInstallPromptEvent(null); 
     } else {
       console.log('Usuário recusou a instalação');
     }
   };
-  // ---------------------------------------------------
 
-  // handleLogout (sem mudanças)
+  // Função: Logout
   const handleLogout = () => {
     if (currentUser) {
       const userRef = doc(db, 'users', currentUser.id);
@@ -223,22 +208,40 @@ function App() {
     setChatWithUser(null);
   };
 
-  // handleSelectUser (sem mudanças)
+  // Função: Selecionar Usuário
   const handleSelectUser = (user: User) => {
     setChatWithUser(user);
   };
 
-  // handleSendMessage (sem mudanças)
+  // Função: Enviar Mensagem
   const handleSendMessage = async (type: MessageType, content: string, duration?: number) => {
     if (!currentUser || !chatWithUser) return;
-    const chatId = currentUser.id > chatWithUser.id 
-      ? `${currentUser.id}_${chatWithUser.id}` 
-      : `${chatWithUser.id}_${currentUser.id}`;
+    
+    // Define o ID do chat (para quem envia e quem recebe)
+    let finalChatUser = chatWithUser;
+    
+    // --- LÓGICA DE CHAMADA PERDIDA ---
+    // Se a mensagem for de chamada perdida, o 'chatWithUser' pode estar errado
+    // (ex: o autor da chamada desligou). Precisamos garantir que estamos
+    // salvando no chat correto (entre o autor e o receptor).
+    if (type === MessageType.MISSED_CALL && activeCall) {
+      const caller = (activeCall.state === CallState.OUTGOING) ? currentUser : activeCall.withUser;
+      const receiver = (activeCall.state === CallState.OUTGOING) ? activeCall.withUser : currentUser;
+      // Define o 'finalChatUser' como a outra pessoa na chamada
+      finalChatUser = (currentUser.id === caller.id) ? receiver : caller;
+    }
+    // ---------------------------------
+    
+    const chatId = currentUser.id > finalChatUser.id 
+      ? `${currentUser.id}_${finalChatUser.id}` 
+      : `${finalChatUser.id}_${currentUser.id}`;
+      
     const messagesRef = collection(db, 'chats', chatId, 'messages');
+    
     try {
       await addDoc(messagesRef, {
-        senderId: currentUser.id,
-        receiverId: chatWithUser.id,
+        senderId: (type === MessageType.MISSED_CALL && activeCall) ? activeCall.withUser.id : currentUser.id,
+        receiverId: finalChatUser.id,
         type,
         content,
         timestamp: serverTimestamp(),
@@ -250,7 +253,7 @@ function App() {
     }
   };
   
-  // handleStartCall (sem mudanças)
+  // Função: Iniciar Chamada
   const handleStartCall = async (type: 'audio' | 'video') => {
     if (!currentUser || !chatWithUser) return;
     const channelName = `call_${currentUser.id}_${chatWithUser.id}`;
@@ -275,7 +278,7 @@ function App() {
     });
   };
   
-  // handleAcceptCall (sem mudanças)
+  // Função: Aceitar Chamada
   const handleAcceptCall = async () => {
     if (ringtoneRef.current) {
       ringtoneRef.current.pause();
@@ -289,21 +292,60 @@ function App() {
     setActiveCall(prev => prev ? { ...prev, state: CallState.ACTIVE } : null);
   };
   
-  // handleEndCall (sem mudanças)
+  // --- FUNÇÃO: ENCERRAR CHAMADA (ATUALIZADA) ---
   const handleEndCall = async () => {
+    // 1. Para o toque (se estiver tocando)
     if (ringtoneRef.current) {
       ringtoneRef.current.pause();
       ringtoneRef.current = null;
     }
-    if (!activeCall || !activeCall.docId) return;
+
+    if (!activeCall || !activeCall.docId || !currentUser) return;
+
+    // --- ESTA É A NOVA LÓGICA ---
+    // 2. Verifica se a chamada foi perdida (tocando e não atendida)
+    if (activeCall.state === CallState.INCOMING || activeCall.state === CallState.OUTGOING) {
+      console.log("Registrando chamada perdida...");
+      
+      // Define quem ligou e quem recebeu
+      const caller = (activeCall.state === CallState.OUTGOING) ? currentUser : activeCall.withUser;
+      const receiver = (activeCall.state === CallState.OUTGOING) ? activeCall.withUser : currentUser;
+
+      // Cria o ID do chat
+      const chatId = caller.id > receiver.id 
+        ? `${caller.id}_${receiver.id}` 
+        : `${receiver.id}_${caller.id}`;
+      
+      const messagesRef = collection(db, 'chats', chatId, 'messages');
+      
+      // Adiciona uma MENSAGEM do tipo MISSED_CALL
+      try {
+        await addDoc(messagesRef, {
+          senderId: caller.id, // A chamada é sempre "de" quem ligou
+          receiverId: receiver.id,
+          type: MessageType.MISSED_CALL,
+          content: `Chamada ${activeCall.type === CallType.VIDEO ? 'de vídeo' : 'de áudio'} não atendida`,
+          timestamp: serverTimestamp(),
+          isRead: false,
+        });
+      } catch (error) {
+        console.error("Erro ao registrar chamada perdida:", error);
+      }
+    }
+    // ---------------------------
+
+    // 3. Deleta o documento da chamada (lógica antiga)
     const callRef = doc(db, "calls", activeCall.docId);
     try {
       await deleteDoc(callRef);
     } catch (error) {
       console.error("Erro ao deletar chamada:", error);
     }
+    
+    // 4. Limpa o estado da chamada local (lógica antiga)
     setActiveCall(null);
   };
+  // ---------------------------------------------
 
   // --- RENDERIZAÇÃO ---
   if (loadingAuth) {
@@ -314,12 +356,14 @@ function App() {
   }
   if (isCameraOpen && currentUser && chatWithUser) {
     return (
-      <CameraModal 
-        onClose={() => setIsCameraOpen(false)}
-        onSendMessage={handleSendMessage}
-        currentUser={currentUser}
-        chatWithUser={chatWithUser}
-      />
+      <Suspense fallback={<div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 text-white text-2xl">Carregando Câmera...</div>}>
+        <CameraModal 
+          onClose={() => setIsCameraOpen(false)}
+          onSendMessage={handleSendMessage}
+          currentUser={currentUser}
+          chatWithUser={chatWithUser}
+        />
+      </Suspense>
     );
   }
 
@@ -337,7 +381,6 @@ function App() {
           </Suspense>
         )}
 
-        {/* --- LAYOUTS ATUALIZADOS COM NOVAS PROPS --- */}
         <div className="h-full w-full md:hidden">
             {!chatWithUser ? (
                 <FamilyList
@@ -386,7 +429,6 @@ function App() {
                 )}
             </div>
         </div>
-        {/* ------------------------------------------- */}
     </div>
   );
 }
