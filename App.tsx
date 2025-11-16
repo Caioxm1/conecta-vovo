@@ -138,7 +138,7 @@ function App() {
         getDoc(doc(db, "users", callData.callerId)).then(userDoc => {
           if (userDoc.exists()) {
             try {
-              const audio = new Audio('/sounds/ringtone.mp3');
+              const audio = new Audio('/sounds/ringtone');
               audio.loop = true;
               audio.play();
               ringtoneRef.current = audio;
