@@ -1,9 +1,9 @@
-import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import firebase from "firebase/compat/app";
+import "firebase/compat/auth";
+import "firebase/compat/firestore";
+import "firebase/compat/storage";
+import "firebase/compat/messaging"; // Adicionado
 
-// Lê as chaves das Variáveis de Ambiente
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -13,12 +13,15 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-// Inicializar os serviços
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-const googleProvider = new GoogleAuthProvider();
+// Inicializa o app v8 (compat)
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
-// AQUI ESTÁ A CORREÇÃO: 'app' foi adicionado à lista de exportação
-export { app, auth, db, storage, googleProvider };
+const auth = firebase.auth();
+const db = firebase.firestore();
+const storage = firebase.storage();
+const googleProvider = new firebase.auth.GoogleAuthProvider();
+
+// Exporta o próprio 'firebase' para o fcm.ts usar
+export { auth, db, storage, googleProvider, firebase };
