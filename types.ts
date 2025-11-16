@@ -4,9 +4,9 @@ export interface User {
   avatar: string;
   status: 'online' | 'offline';
   isAdmin?: boolean; 
-  relationship?: string; // Mantido como opcional para fallback
+  relationship?: string;
   relationships?: { [key: string]: string };
-  chatBackground?: string; // <-- ARQUIVO ATUALIZADO AQUI
+  chatBackground?: string;
 }
 
 export enum MessageType {
@@ -48,3 +48,15 @@ export interface ActiveCall {
   docId?: string;
   channelName?: string;
 }
+
+// --- INTERFACE NOVA ADICIONADA ---
+// Define o tipo para o evento de instalação do PWA
+export interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{
+    outcome: 'accepted' | 'dismissed';
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
+}
+// ---------------------------------

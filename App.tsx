@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense, useRef } from 'react'; // <-- Adicionado useRef
+import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth, db } from './firebase';
 import { 
@@ -15,7 +15,9 @@ import LoginScreen from './components/LoginScreen';
 import FamilyList from './components/FamilyList';
 import ChatWindow from './components/ChatWindow';
 import CameraModal from './components/CameraModal';
-import type { User, Message, ActiveCall } from './types';
+// --- IMPORTAÇÃO NOVA ---
+import type { User, Message, ActiveCall, BeforeInstallPromptEvent } from './types';
+// ----------------------
 import { MessageType, CallState, CallType } from './types';
 
 const AGORA_APP_ID = process.env.AGORA_APP_ID || "";
@@ -28,12 +30,30 @@ function App() {
   const [chatWithUser, setChatWithUser] = useState<User | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
-
-  // --- NOVO: Ref para guardar o áudio do toque ---
   const ringtoneRef = useRef<HTMLAudioElement | null>(null);
-  // ---------------------------------------------
+  
+  // --- NOVO ESTADO PARA O BOTÃO DE INSTALAR ---
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  // ------------------------------------------
 
-  // useEffect de Login (Corrigido)
+  // --- NOVO useEffect: Ouve o evento de instalação ---
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault(); // Impede o mini-infobar padrão do Chrome
+      setInstallPromptEvent(event as BeforeInstallPromptEvent); // Salva o evento
+      console.log("Evento 'beforeinstallprompt' capturado! O app pode ser instalado.");
+    };
+
+    // 'as any' é usado porque 'beforeinstallprompt' não é 100% padrão
+    window.addEventListener('beforeinstallprompt' as any, handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt' as any, handleBeforeInstallPrompt);
+    };
+  }, []); // Roda só uma vez quando o app carrega
+  // ------------------------------------------------
+
+  // useEffect de Login (sem mudanças)
   useEffect(() => {
     let unsubscribeUser: () => void = () => {}; 
     let tokenRequested = false; 
@@ -75,24 +95,20 @@ function App() {
           auth.signOut();
         }
       };
-
     } else {
       unsubscribeUser();
       setCurrentUser(null);
     }
-    
     return () => unsubscribeUser();
-    
   }, [userAuth]);
 
-  // useEffect (Deep Link de Notificação de Chamada)
+  // useEffect (Deep Link de Notificação de Chamada) (sem mudanças)
   useEffect(() => {
     if (!currentUser) return;
     const params = new URLSearchParams(window.location.search);
     const action = params.get('action');
     const callDocId = params.get('callDocId');
     if (action === 'accept_call' && callDocId && !activeCall) { 
-      console.log("Abrindo chamada vinda de notificação:", callDocId);
       const callRef = doc(db, "calls", callDocId);
       getDoc(callRef).then(callDoc => {
         if (callDoc.exists()) {
@@ -115,38 +131,29 @@ function App() {
     }
   }, [currentUser, activeCall]);
 
-  // --- useEffect: OUVINTE DE CHAMADAS 'INCOMING' (MODIFICADO) ---
+  // useEffect: OUVINTE DE CHAMADAS 'INCOMING' (sem mudanças)
   useEffect(() => {
     if (!currentUser) return;
-    
     const callsRef = collection(db, "calls");
     const q = query(callsRef, 
       where("receiverId", "==", currentUser.id),
       where("status", "==", "ringing")
     );
-    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
-        // Se já estiver em chamada ou tocando, não faz nada
         if (activeCall || ringtoneRef.current) return;
-        
         const callDoc = snapshot.docs[0]; 
         const callData = callDoc.data();
-        
         getDoc(doc(db, "users", callData.callerId)).then(userDoc => {
           if (userDoc.exists()) {
-            
-            // --- TOCA O SOM DA CHAMADA ---
             try {
               const audio = new Audio('/sounds/ringtone.mp3');
               audio.loop = true;
               audio.play();
-              ringtoneRef.current = audio; // Salva a referência para parar depois
+              ringtoneRef.current = audio;
             } catch (e) {
               console.error("Erro ao tocar som:", e);
             }
-            // -----------------------------
-
             const callerData = userDoc.data() as User;
             setActiveCall({
               state: CallState.INCOMING,
@@ -160,8 +167,7 @@ function App() {
       }
     });
     return () => unsubscribe();
-  }, [currentUser, activeCall]); // Adicionado activeCall
-  // ----------------------------------------------------
+  }, [currentUser, activeCall]);
 
   // useEffect: OUVINTE DO ESTADO DA CHAMADA ATIVA (sem mudanças)
   useEffect(() => {
@@ -169,24 +175,42 @@ function App() {
     const callRef = doc(db, "calls", activeCall.docId);
     const unsubscribe = onSnapshot(callRef, (docSnapshot) => {
       if (!docSnapshot.exists()) {
-        console.log("Chamada encerrada pela outra parte.");
-        // --- PARA O SOM (SE ESTIVER TOCANDO) ---
         if (ringtoneRef.current) {
           ringtoneRef.current.pause();
           ringtoneRef.current = null;
         }
-        // -------------------------------------
         setActiveCall(null);
         return;
       }
       const callData = docSnapshot.data();
       if (callData.status === "active" && activeCall.state === CallState.OUTGOING) {
-        console.log("Chamada atendida pelo destinatário!");
         setActiveCall(prev => prev ? { ...prev, state: CallState.ACTIVE } : null);
       }
     });
     return () => unsubscribe();
   }, [activeCall?.docId, activeCall?.state]);
+
+  // --- NOVA FUNÇÃO: Lida com o clique no botão Instalar ---
+  const handleInstallClick = async () => {
+    if (!installPromptEvent) {
+      alert("Não foi possível instalar o app. Tente novamente mais tarde.");
+      return;
+    }
+    
+    // Mostra o pop-up de instalação do navegador
+    installPromptEvent.prompt(); 
+    
+    // Espera a escolha do usuário
+    const { outcome } = await installPromptEvent.userChoice;
+    if (outcome === 'accepted') {
+      console.log('Usuário aceitou a instalação');
+      // Esconde o botão, pois o app já foi instalado
+      setInstallPromptEvent(null); 
+    } else {
+      console.log('Usuário recusou a instalação');
+    }
+  };
+  // ---------------------------------------------------
 
   // handleLogout (sem mudanças)
   const handleLogout = () => {
@@ -251,14 +275,12 @@ function App() {
     });
   };
   
-  // --- handleAcceptCall (MODIFICADO) ---
+  // handleAcceptCall (sem mudanças)
   const handleAcceptCall = async () => {
-    // Para o som de chamada
     if (ringtoneRef.current) {
       ringtoneRef.current.pause();
       ringtoneRef.current = null;
     }
-    
     if (!activeCall || !activeCall.docId) return;
     const callRef = doc(db, "calls", activeCall.docId);
     await updateDoc(callRef, {
@@ -267,14 +289,12 @@ function App() {
     setActiveCall(prev => prev ? { ...prev, state: CallState.ACTIVE } : null);
   };
   
-  // --- handleEndCall (MODIFICADO) ---
+  // handleEndCall (sem mudanças)
   const handleEndCall = async () => {
-    // Para o som de chamada (se estiver tocando)
     if (ringtoneRef.current) {
       ringtoneRef.current.pause();
       ringtoneRef.current = null;
     }
-
     if (!activeCall || !activeCall.docId) return;
     const callRef = doc(db, "calls", activeCall.docId);
     try {
@@ -285,7 +305,7 @@ function App() {
     setActiveCall(null);
   };
 
-  // --- RENDERIZAÇÃO (sem mudanças) ---
+  // --- RENDERIZAÇÃO ---
   if (loadingAuth) {
     return <div className="flex h-screen items-center justify-center">Carregando...</div>;
   }
@@ -302,6 +322,7 @@ function App() {
       />
     );
   }
+
   return (
     <div className="h-dvh w-screen font-sans overflow-hidden">
         {activeCall && currentUser && (
@@ -315,12 +336,16 @@ function App() {
             />
           </Suspense>
         )}
+
+        {/* --- LAYOUTS ATUALIZADOS COM NOVAS PROPS --- */}
         <div className="h-full w-full md:hidden">
             {!chatWithUser ? (
                 <FamilyList
                     currentUser={currentUser}
                     onSelectUser={handleSelectUser}
                     onLogout={handleLogout}
+                    onInstallClick={handleInstallClick}
+                    installPromptEvent={installPromptEvent}
                 />
             ) : (
                 <ChatWindow
@@ -339,6 +364,8 @@ function App() {
                     currentUser={currentUser}
                     onSelectUser={handleSelectUser}
                     onLogout={handleLogout}
+                    onInstallClick={handleInstallClick}
+                    installPromptEvent={installPromptEvent}
                 />
             </div>
             <div className="flex-1 h-full">
@@ -359,6 +386,7 @@ function App() {
                 )}
             </div>
         </div>
+        {/* ------------------------------------------- */}
     </div>
   );
 }
