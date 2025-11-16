@@ -9,7 +9,7 @@ const db = getFirestore();
 const messaging = getMessaging();
 
 /**
- * Função 1: Acionada quando uma NOVA MENSAGEM DE CHAT é criada
+ * Função 1: Notificação de CHAT
  */
 export const sendNotificationOnNewMessage = onDocumentCreated("/chats/{chatId}/messages/{messageId}", async (event) => {
     
@@ -40,8 +40,8 @@ export const sendNotificationOnNewMessage = onDocumentCreated("/chats/{chatId}/m
         webpush: {
             notification: {
                 icon: senderAvatar || "https://firebase.google.com/static/images/brand-guidelines/logo-vertical.svg",
-                sound: "/sounds/message.mp3", // <-- SOM DA MENSAGEM
-                tag: `chat-${senderId}`, // Agrupa notificações do mesmo usuário
+                sound: "/sounds/message.mp3", // <-- Som de Mensagem
+                tag: `chat-${senderId}`, 
                 renotify: true,
             },
         },
@@ -58,7 +58,7 @@ export const sendNotificationOnNewMessage = onDocumentCreated("/chats/{chatId}/m
 
 
 /**
- * Função 2: Acionada quando uma NOVA CHAMADA é criada
+ * Função 2: Notificação de CHAMADA
  */
 export const sendCallNotification = onDocumentCreated("/calls/{callId}", async (event) => {
     
@@ -92,8 +92,8 @@ export const sendCallNotification = onDocumentCreated("/calls/{callId}", async (
         webpush: {
             notification: {
                 icon: callerAvatar || "https".concat("://firebase.google.com/static/images/brand-guidelines/logo-vertical.svg"),
-                sound: "/sounds/ringtone.mp3", // <-- SOM DA CHAMADA
-                tag: "incoming-call", // Tag única para chamadas
+                sound: "/sounds/ringtone.mp3", // <-- Som da Chamada
+                tag: "incoming-call", 
                 renotify: true,
             }
         },

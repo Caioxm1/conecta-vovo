@@ -1,7 +1,8 @@
-// Importa os scripts do Firebase
-importScripts("https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js");
+// --- SCRIPTS ATUALIZADOS PARA v9 MODULAR ---
+importScripts("https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js");
+importScripts("https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging.js");
 
+// IMPORTANTE: Cole a MESMA configuração do seu arquivo 'firebase.ts'
 const firebaseConfig = {
   apiKey: "AIzaSyDLGOHvT6qQ2XzbK81GvuqiN1bE_TaYhx0",
   authDomain: "app-de-conversa-d166d.firebaseapp.com",
@@ -11,24 +12,26 @@ const firebaseConfig = {
   appId: "1:838642513898:web:32416d61f47f78eb69e493"
 };
 
-firebase.initializeApp(firebaseConfig);
-const messaging = firebase.messaging();
+// --- SINTAXE DE INICIALIZAÇÃO v9 MODULAR ---
+const app = firebase.initializeApp(firebaseConfig);
+const messaging = firebase.messaging(app);
+// -------------------------------------------
 
 // Ouvinte de mensagens em segundo plano
 messaging.onBackgroundMessage((payload) => {
-  console.log("[SW] Mensagem em segundo plano recebida: ", payload);
+  console.log("[SW v9] Mensagem em segundo plano recebida: ", payload);
 
   const notificationTitle = payload.notification.title;
   
-  // --- OPÇÕES DE NOTIFICAÇÃO ATUALIZADAS ---
+  // As opções da notificação
   let notificationOptions = {
     body: payload.notification.body,
     icon: payload.notification.icon,
-    sound: payload.notification.sound, // <-- USA O SOM ENVIADO PELA FUNÇÃO
-    data: payload.data
+    sound: payload.notification.sound, // Pega o som da Cloud Function
+    data: payload.data 
   };
-  // ----------------------------------------
 
+  // Se for uma chamada, adicionamos botões
   if (payload.data && payload.data.type === "incoming_call") {
     notificationOptions = {
       ...notificationOptions,
@@ -40,10 +43,11 @@ messaging.onBackgroundMessage((payload) => {
     };
   }
 
+  // Mostra a notificação
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// Ouvinte de clique na notificação
+// --- OUVINTE DE CLIQUE (Sem mudanças, mas é v9 compatível) ---
 self.addEventListener('notificationclick', (event) => {
   const notification = event.notification;
   const action = event.action; 
@@ -51,7 +55,8 @@ self.addEventListener('notificationclick', (event) => {
   notification.close(); 
 
   if (!notification.data || notification.data.type !== "incoming_call") {
-    return;
+    // Se não for uma chamada, apenas abre o app
+    return event.waitUntil(clients.openWindow('/'));
   }
   
   const callData = notification.data;
@@ -60,6 +65,7 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
   
+  // Se aceitou, abre a URL da chamada
   const urlToOpen = new URL(`/?action=accept_call&callDocId=${callData.docId}`, self.location.origin).href;
 
   event.waitUntil(

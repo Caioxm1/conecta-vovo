@@ -1,6 +1,5 @@
 import { getMessaging, getToken, isSupported } from "firebase/messaging";
-// AQUI ESTÁ A CORREÇÃO: O caminho mudou de './firebase' para '../firebase'
-import { app, db } from "../firebase"; 
+import { app, db } from "../firebase"; // Caminho '../firebase'
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 // Esta é a chave que você copiou do Console do Firebase
@@ -8,22 +7,20 @@ const VAPID_KEY = "BEtp3Dn1ucaJRxlpIt51w-xjRhanEsbogXoS0janttQ28bAYs1ipkCR1BSOHe
 
 // Função para pedir permissão e salvar o token
 export const requestPermissionAndSaveToken = async (userId: string) => {
-  // Verifica se o navegador suporta 'messaging'
   const supported = await isSupported();
   if (!supported) {
     console.log("Notificações Push não são suportadas neste navegador.");
     return;
   }
 
-  const messaging = getMessaging(app);
+  const messaging = getMessaging(app); // v9
 
   try {
-    // 1. Pede permissão
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
       console.log("Permissão de notificação concedida.");
 
-      // 2. Obtém o Token
+      // getToken (v9) agora vai funcionar com o Service Worker (v9)
       const currentToken = await getToken(messaging, {
         vapidKey: VAPID_KEY,
       });
@@ -31,12 +28,11 @@ export const requestPermissionAndSaveToken = async (userId: string) => {
       if (currentToken) {
         console.log("Token FCM obtido:", currentToken);
         
-        // 3. Salva o token no perfil do usuário no Firestore
         const userRef = doc(db, "users", userId);
         await setDoc(userRef, {
-          fcmToken: currentToken, // Salva o token
-          tokenLastUpdated: serverTimestamp() // Para sabermos quando foi
-        }, { merge: true }); // 'merge: true' não apaga os outros dados
+          fcmToken: currentToken,
+          tokenLastUpdated: serverTimestamp()
+        }, { merge: true });
 
       } else {
         console.log("Não foi possível obter o token. A permissão foi concedida?");
