@@ -9,7 +9,7 @@ const db = getFirestore();
 const messaging = getMessaging();
 
 /**
- * Função 1: Notificação de CHAT
+ * Função 1: Notificação de CHAT (Atualizada)
  */
 export const sendNotificationOnNewMessage = onDocumentCreated("/chats/{chatId}/messages/{messageId}", async (event) => {
     
@@ -32,23 +32,27 @@ export const sendNotificationOnNewMessage = onDocumentCreated("/chats/{chatId}/m
     const senderName = senderDoc.data()?.name || "Alguém";
     const senderAvatar = senderDoc.data()?.avatar;
 
+    // --- PAYLOAD ATUALIZADO ---
+    // Removemos o campo 'notification' e 'webpush'.
+    // Colocamos TUDO dentro de 'data'.
     const payload = {
-        notification: {
+        data: {
+            // Dados da notificação
             title: `Nova mensagem de ${senderName}`,
             body: type === "text" ? content : (type === "image" ? "Enviou uma foto" : "Enviou uma mensagem de voz"),
-        },
-        webpush: {
-            notification: {
-                icon: senderAvatar || "https://firebase.google.com/static/images/brand-guidelines/logo-vertical.svg",
-                sound: "/sounds/message.mp3", // <-- Som de Mensagem
-                tag: `chat-${senderId}`, 
-                renotify: true,
-            },
+            icon: senderAvatar || "https://firebase.google.com/static/images/brand-guidelines/logo-vertical.svg",
+            sound: "/sounds/message.mp3",
+            tag: `chat-${senderId}`,
+            
+            // Dados para o clique (para saber o que abrir)
+            type: "chat_message", 
+            senderId: senderId,
         },
         token: fcmToken,
     };
+    // -------------------------
 
-    logger.log(`Enviando notificação de CHAT para: ${fcmToken}`);
+    logger.log(`Enviando notificação de CHAT (data-only) para: ${fcmToken}`);
     try {
         await messaging.send(payload);
     } catch (error) {
@@ -58,7 +62,7 @@ export const sendNotificationOnNewMessage = onDocumentCreated("/chats/{chatId}/m
 
 
 /**
- * Função 2: Notificação de CHAMADA
+ * Função 2: Notificação de CHAMADA (Atualizada)
  */
 export const sendCallNotification = onDocumentCreated("/calls/{callId}", async (event) => {
     
@@ -81,24 +85,19 @@ export const sendCallNotification = onDocumentCreated("/calls/{callId}", async (
     const callerName = callerDoc.data()?.name || "Alguém";
     const callerAvatar = callerDoc.data()?.avatar;
 
+    // --- PAYLOAD ATUALIZADO ---
+    // Removemos o campo 'notification' e 'webpush'.
     const payload = {
         token: fcmToken,
-        
-        notification: {
+        data: {
+            // Dados da notificação
             title: `📞 ${callerName} está te ligando...`,
             body: `Clique para ${callData.type === 'video' ? 'atender a chamada de vídeo' : 'atender a chamada de áudio'}.`,
-        },
-        
-        webpush: {
-            notification: {
-                icon: callerAvatar || "https".concat("://firebase.google.com/static/images/brand-guidelines/logo-vertical.svg"),
-                sound: "/sounds/ringtone.mp3", // <-- Som da Chamada
-                tag: "incoming-call", 
-                renotify: true,
-            }
-        },
-        
-        data: {
+            icon: callerAvatar || "https".concat("://firebase.google.com/static/images/brand-guidelines/logo-vertical.svg"),
+            sound: "/sounds/ringtone.mp3",
+            tag: "incoming-call",
+            
+            // Dados para o clique
             type: "incoming_call",
             callerName: callerName,
             callerId: callerId,
@@ -107,8 +106,9 @@ export const sendCallNotification = onDocumentCreated("/calls/{callId}", async (
             callType: type,
         }
     };
+    // -------------------------
 
-    logger.log(`Enviando notificação de CHAMADA para: ${fcmToken}`);
+    logger.log(`Enviando notificação de CHAMADA (data-only) para: ${fcmToken}`);
     try {
         await messaging.send(payload);
     } catch (error) {
