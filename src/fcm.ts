@@ -1,5 +1,10 @@
-import { getMessaging, getToken, isSupported } from "firebase/messaging";
-import { app, db } from "../firebase"; // Caminho '../firebase'
+// --- MUDANÇA 1: Importa as bibliotecas 'compat' ---
+import firebase from "firebase/compat/app";
+import "firebase/compat/messaging";
+import { getMessaging, getToken } from "firebase/messaging";
+// --------------------------------------------------
+
+import { app, db } from "../firebase"; // 'app' ainda é o v9, o que é ok
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 // Esta é a chave que você copiou do Console do Firebase
@@ -7,23 +12,29 @@ const VAPID_KEY = "BEtp3Dn1ucaJRxlpIt51w-xjRhanEsbogXoS0janttQ28bAYs1ipkCR1BSOHe
 
 // Função para pedir permissão e salvar o token
 export const requestPermissionAndSaveToken = async (userId: string) => {
-  const supported = await isSupported();
+  
+  // --- MUDANÇA 2: Usa o 'firebase.messaging.isSupported()' (compat) ---
+  const supported = await firebase.messaging.isSupported();
   if (!supported) {
     console.log("Notificações Push não são suportadas neste navegador.");
     return;
   }
+  // -----------------------------------------------------------------
 
-  const messaging = getMessaging(app); // v9
+  // --- MUDANÇA 3: Inicializa o messaging 'compat' ---
+  const messaging = firebase.messaging();
+  // ------------------------------------------------
 
   try {
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
       console.log("Permissão de notificação concedida.");
 
-      // getToken (v9) agora vai funcionar com o Service Worker (v9)
-      const currentToken = await getToken(messaging, {
+      // --- MUDANÇA 4: Usa o 'messaging.getToken()' (compat) ---
+      const currentToken = await messaging.getToken({
         vapidKey: VAPID_KEY,
       });
+      // ------------------------------------------------------
 
       if (currentToken) {
         console.log("Token FCM obtido:", currentToken);
